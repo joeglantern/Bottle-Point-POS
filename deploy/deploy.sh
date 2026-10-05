@@ -1,47 +1,86 @@
 #!/usr/bin/env bash
-# Build the web app and ship it to the server.
+# Build and ship Bottle Point (web + API + Postgres) to the server.
 #
-# The app runs in its own nginx container on PORT, so it does not touch the
-# host nginx or any other site on the box. Needs the deploy user to be in the
-# docker group, no sudo.
+# Everything runs in its own Docker Compose project in ~/apps/bottle-point,
+# so the host nginx and the other sites on that box are not touched, and no
+# sudo is needed (the deploy user is in the docker group).
 #
 # Usage: ./deploy/deploy.sh
-#        DEPLOY_HOST=user@host PORT=8085 ./deploy/deploy.sh
+#        DEPLOY_HOST=user@host PUBLIC_URL=http://1.2.3.4:8085 ./deploy/deploy.sh
+#        SEED_DEMO=1 ./deploy/deploy.sh     (load the demo business and PINs)
 set -euo pipefail
 
 HOST="${DEPLOY_HOST:-liban@156.67.25.84}"
-PORT="${PORT:-8085}"
-APP_DIR="apps/bottle-point"
-CONTAINER="bottle-point-web"
+PUBLIC_URL="${PUBLIC_URL:-http://${HOST#*@}:8085}"
+APP="apps/bottle-point"
 RELEASE="$(date +%Y%m%d%H%M%S)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "Building..."
+echo "Building the web app..."
 cd "$ROOT/web"
 [ -d node_modules ] || npm ci --no-audit --no-fund
 npm run build
 
 echo "Uploading release $RELEASE to $HOST..."
-ssh "$HOST" "mkdir -p ~/$APP_DIR/releases/$RELEASE ~/$APP_DIR/conf"
-tar -C dist -czf - . | ssh "$HOST" "tar -xzf - -C ~/$APP_DIR/releases/$RELEASE"
-ssh "$HOST" "cat > ~/$APP_DIR/conf/default.conf" < "$ROOT/deploy/nginx.conf"
+ssh "$HOST" "mkdir -p ~/$APP/web/releases/$RELEASE ~/$APP/conf ~/$APP/server"
+tar -C dist -czf - . | ssh "$HOST" "tar -xzf - -C ~/$APP/web/releases/$RELEASE"
+tar -C "$ROOT/server" --exclude=node_modules --exclude=dist --exclude=generated --exclude=.env --exclude=test --exclude=docs -czf - . \
+  | ssh "$HOST" "rm -rf ~/$APP/server && mkdir -p ~/$APP/server && tar -xzf - -C ~/$APP/server"
+ssh "$HOST" "cat > ~/$APP/docker-compose.yml" < "$ROOT/deploy/docker-compose.yml"
+ssh "$HOST" "cat > ~/$APP/conf/default.conf" < "$ROOT/deploy/nginx.conf"
 
-echo "Switching to the new release..."
-ssh "$HOST" bash -s <<REMOTE
+echo "Starting containers..."
+ssh "$HOST" PUBLIC_URL="$PUBLIC_URL" RELEASE="$RELEASE" SEED_DEMO="${SEED_DEMO:-}" bash -s <<'REMOTE'
 set -euo pipefail
-cd ~/$APP_DIR
-ln -sfn releases/$RELEASE current
-ls -1dt releases/* | tail -n +6 | xargs -r rm -rf
+cd ~/apps/bottle-point
+umask 077
 
-if ! docker inspect $CONTAINER >/dev/null 2>&1; then
-  docker run -d --name $CONTAINER --restart unless-stopped \
-    -p $PORT:80 \
-    -v "\$HOME/$APP_DIR:/srv:ro" \
-    -v "\$HOME/$APP_DIR/conf/default.conf:/etc/nginx/conf.d/default.conf:ro" \
-    nginx:alpine >/dev/null
-else
-  docker exec $CONTAINER nginx -s reload
+# secrets are created once on the server and never leave it
+if [ ! -f db.env ]; then
+  printf 'POSTGRES_USER=bottlepoint
+POSTGRES_DB=bottlepoint
+POSTGRES_PASSWORD=%s
+' "$(head -c 24 /dev/urandom | base64 | tr -d '/+=')" > db.env
 fi
+DB_PASSWORD="$(grep '^POSTGRES_PASSWORD=' db.env | cut -d= -f2-)"
+if [ ! -f api.env ]; then
+  cat > api.env <<ENV
+NODE_ENV=production
+PORT=3000
+DATABASE_URL=postgresql://bottlepoint:$DB_PASSWORD@db:5432/bottlepoint
+BETTER_AUTH_SECRET=$(head -c 32 /dev/urandom | base64)
+BETTER_AUTH_URL=$PUBLIC_URL
+TRUSTED_ORIGINS=$PUBLIC_URL
+# plain HTTP until there is a domain with HTTPS; set true after
+COOKIE_SECURE=false
+MPESA_MODE=mock
+MPESA_CALLBACK_URL=$PUBLIC_URL/api/mpesa/callback
+MPESA_CALLBACK_TOKEN=$(head -c 18 /dev/urandom | od -An -tx1 | tr -d ' \n')
+ENV
+  FIRST=1
+fi
+chmod 644 conf/default.conf
+
+ln -sfn releases/$RELEASE web/current
+ls -1dt web/releases/* | tail -n +6 | xargs -r rm -rf
+
+# the first version ran as a single nginx container on the same port
+if docker inspect bottle-point-web >/dev/null 2>&1; then docker rm -f bottle-point-web >/dev/null; fi
+rm -rf releases current
+
+# commands get </dev/null: this script itself arrives on stdin and docker
+# would otherwise swallow the rest of it
+docker compose up -d --build --remove-orphans </dev/null
+for i in $(seq 1 60); do
+  [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q api)")" = healthy ] && break
+  sleep 2
+done
+docker compose exec -T web nginx -s reload </dev/null >/dev/null 2>&1 || true
+
+if [ -n "${FIRST:-}" ] || [ -n "$SEED_DEMO" ]; then
+  docker compose exec -T api npx tsx prisma/seed.ts </dev/null
+fi
+docker compose ps --format '{{.Service}} {{.Status}}' </dev/null
 REMOTE
 
-echo "Live at http://${HOST#*@}:$PORT"
+echo "Live at $PUBLIC_URL"

@@ -1,0 +1,42 @@
+# Bottle Point on the server: its own Postgres, API and web, nothing shared.
+# Lives in ~/apps/bottle-point. Secrets come from ./db.env and ./api.env,
+# created on the server by deploy.sh and never committed.
+name: bottle-point
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file: ./db.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bottlepoint"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build: ./server
+    restart: unless-stopped
+    env_file: ./api.env
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      retries: 10
+
+  web:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "8085:80"
+    volumes:
+      - ./web:/srv:ro
+      - ./conf/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

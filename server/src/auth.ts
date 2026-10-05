@@ -2,7 +2,7 @@ import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { username } from 'better-auth/plugins'
 import { prisma } from './db.js'
-import { env, isProd, trustedOrigins } from './env.js'
+import { env, secureCookies, trustedOrigins } from './env.js'
 
 // Staff sign in with username and PIN. Accounts are only ever created by an
 // owner (or the seed), never through a public sign up route.
@@ -37,8 +37,8 @@ export const auth = betterAuth({
     max: 120
   },
   advanced: {
-    useSecureCookies: isProd,
-    defaultCookieAttributes: { sameSite: 'strict', httpOnly: true, secure: isProd }
+    useSecureCookies: secureCookies,
+    defaultCookieAttributes: { sameSite: 'strict', httpOnly: true, secure: secureCookies }
   },
   telemetry: { enabled: false }
 })
