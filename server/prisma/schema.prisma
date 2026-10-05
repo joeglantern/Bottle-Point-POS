@@ -1,0 +1,434 @@
+// Bottle Point data model.
+// Money is always stored as integer cents (KSh x 100). Never floats.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CASHIER
+  MANAGER
+  OWNER
+}
+
+enum SaleStatus {
+  OPEN
+  SAVED
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum PayMethod {
+  CASH
+  MPESA
+}
+
+// How we know an M-Pesa payment is real.
+//   CASH: not applicable
+//   STK_CONFIRMED: Safaricom callback (or STK query) confirmed it
+//   MANUAL_UNVERIFIED: cashier typed the code from the customer's SMS (fallback)
+//   MANUAL_VERIFIED / MANUAL_REJECTED: a manager checked the typed code
+enum PaymentVerification {
+  CASH
+  STK_CONFIRMED
+  MANUAL_UNVERIFIED
+  MANUAL_VERIFIED
+  MANUAL_REJECTED
+}
+
+enum MpesaStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+  TIMEOUT
+}
+
+enum ApprovalKind {
+  CANCEL
+  REFUND
+  DISCOUNT
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum StockReason {
+  SALE
+  REFUND
+  RECEIVE
+  ADJUST
+}
+
+// ---------- Business and branches ----------
+
+model Business {
+  id        String     @id @default(cuid())
+  name      String
+  createdAt DateTime   @default(now())
+  branches  Branch[]
+  users     User[]
+  products  Product[]
+  customers Customer[]
+}
+
+model Branch {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  // next human readable sale number for this branch, incremented atomically
+  nextSaleNo Int      @default(1001)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  business     Business       @relation(fields: [businessId], references: [id])
+  users        UserBranch[]
+  sales        Sale[]
+  shifts       Shift[]
+  stock        Stock[]
+  movements    StockMovement[]
+  mpesaRequest MpesaRequest[]
+
+  @@unique([businessId, name])
+}
+
+// ---------- Users (shared with Better Auth) ----------
+
+model User {
+  id              String    @id
+  name            String
+  email           String    @unique
+  emailVerified   Boolean   @default(false)
+  image           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  username        String?   @unique
+  displayUsername String?
+
+  // Bottle Point fields
+  businessId    String?
+  role          Role      @default(CASHIER)
+  active        Boolean   @default(true)
+  failedPins    Int       @default(0)
+  lockedUntil   DateTime?
+
+  business  Business?    @relation(fields: [businessId], references: [id])
+  branches  UserBranch[]
+  sessions  Session[]
+  accounts  Account[]
+
+  @@map("user")
+}
+
+model UserBranch {
+  userId   String
+  branchId String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@id([userId, branchId])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ---------- Catalog and stock ----------
+
+model Product {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  sizeMl     Int?
+  category   String
+  barcode    String?
+  priceCents Int
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business  Business        @relation(fields: [businessId], references: [id])
+  stock     Stock[]
+  lines     SaleLine[]
+  movements StockMovement[]
+
+  @@unique([businessId, barcode])
+  @@index([businessId, category])
+}
+
+model Stock {
+  branchId  String
+  productId String
+  qty       Int     @default(0)
+  // alert when qty drops below this
+  reorderAt Int     @default(10)
+
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@id([branchId, productId])
+}
+
+model StockMovement {
+  id        String      @id @default(cuid())
+  branchId  String
+  productId String
+  delta     Int
+  reason    StockReason
+  saleId    String?
+  userId    String
+  note      String?
+  createdAt DateTime    @default(now())
+
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([branchId, productId, createdAt])
+}
+
+// ---------- Customers ----------
+
+model Customer {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  phone      String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id])
+  sales    Sale[]
+
+  @@unique([businessId, phone])
+}
+
+// ---------- Shifts ----------
+
+model Shift {
+  id                String    @id @default(cuid())
+  branchId          String
+  userId            String
+  openedAt          DateTime  @default(now())
+  openingFloatCents Int
+  closedAt          DateTime?
+  // filled when the shift is closed
+  expectedCashCents Int?
+  countedCashCents  Int?
+  varianceCents     Int?
+  closeNote         String?
+
+  branch   Branch    @relation(fields: [branchId], references: [id])
+  payments Payment[]
+  refunds  Refund[]
+
+  @@index([branchId, openedAt])
+  @@index([userId, closedAt])
+}
+
+// ---------- Sales ----------
+
+model Sale {
+  id            String     @id @default(cuid())
+  number        Int
+  branchId      String
+  createdById   String
+  label         String?
+  customerId    String?
+  status        SaleStatus @default(OPEN)
+  subtotalCents Int        @default(0)
+  discountCents Int        @default(0)
+  totalCents    Int        @default(0)
+  paidById      String?
+  paidAt        DateTime?
+  cancelledAt   DateTime?
+  refundedAt    DateTime?
+  // optimistic concurrency: bumped on every change to lines or status
+  version       Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  branch        Branch         @relation(fields: [branchId], references: [id])
+  customer      Customer?      @relation(fields: [customerId], references: [id])
+  lines         SaleLine[]
+  payments      Payment[]
+  approvals     Approval[]
+  mpesaRequests MpesaRequest[]
+  refunds       Refund[]
+
+  @@unique([branchId, number])
+  @@index([branchId, status, createdAt])
+}
+
+model SaleLine {
+  id        String @id @default(cuid())
+  saleId    String
+  productId String
+  // snapshots, so later price or name changes never rewrite history
+  name      String
+  unitCents Int
+  qty       Int
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([saleId, productId])
+}
+
+model Payment {
+  id             String              @id @default(cuid())
+  saleId         String
+  method         PayMethod
+  amountCents    Int
+  // for cash: what the customer handed over (change = tendered - amount)
+  tenderedCents  Int?
+  // M-Pesa receipt code. One code can only ever belong to one payment.
+  mpesaRef       String?             @unique
+  phone          String?
+  verification   PaymentVerification
+  mpesaRequestId String?             @unique
+  receivedById   String
+  shiftId        String?
+  verifiedById   String?
+  verifiedAt     DateTime?
+  createdAt      DateTime            @default(now())
+
+  sale         Sale          @relation(fields: [saleId], references: [id])
+  shift        Shift?        @relation(fields: [shiftId], references: [id])
+  mpesaRequest MpesaRequest? @relation(fields: [mpesaRequestId], references: [id])
+
+  @@index([saleId])
+  @@index([shiftId])
+}
+
+// One STK push sent to a customer's phone for (part of) a sale.
+model MpesaRequest {
+  id                String      @id @default(cuid())
+  saleId            String
+  branchId          String
+  phone             String
+  amountCents       Int
+  merchantRequestId String?
+  checkoutRequestId String?     @unique
+  status            MpesaStatus @default(PENDING)
+  resultCode        Int?
+  resultDesc        String?
+  receipt           String?     @unique
+  requestedById     String
+  shiftId           String?
+  rawCallback       Json?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  sale    Sale     @relation(fields: [saleId], references: [id])
+  branch  Branch   @relation(fields: [branchId], references: [id])
+  payment Payment?
+
+  @@index([saleId])
+  @@index([branchId, status])
+}
+
+// ---------- Approvals and refunds ----------
+
+model Approval {
+  id            String         @id @default(cuid())
+  saleId        String
+  kind          ApprovalKind
+  status        ApprovalStatus @default(PENDING)
+  reason        String
+  // DISCOUNT: amount requested. REFUND: amount to refund.
+  amountCents   Int?
+  // REFUND: how the money goes back
+  refundMethod  PayMethod?
+  requestedById String
+  decidedById   String?
+  decidedAt     DateTime?
+  createdAt     DateTime       @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@index([saleId])
+  @@index([status, createdAt])
+}
+
+model Refund {
+  id           String    @id @default(cuid())
+  saleId       String
+  approvalId   String    @unique
+  amountCents  Int
+  method       PayMethod
+  // cash refunds leave the till of this shift
+  shiftId      String?
+  paidOutById  String
+  createdAt    DateTime  @default(now())
+
+  sale  Sale   @relation(fields: [saleId], references: [id])
+  shift Shift? @relation(fields: [shiftId], references: [id])
+}
+
+// ---------- Audit ----------
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  at         DateTime @default(now())
+  userId     String?
+  businessId String?
+  branchId   String?
+  action     String
+  entity     String
+  entityId   String?
+  data       Json?
+
+  @@index([branchId, at])
+  @@index([entity, entityId])
+}
