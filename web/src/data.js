@@ -40,11 +40,11 @@ function line(pid, qty) {
 }
 
 export const SEED_SALES = [
-  { no: 1041, branch: 'wl', cashier: 'Wanjiru K.', at: now - 310 * min, status: 'paid', lines: [line('p1', 1), line('p10', 6)], payments: [{ method: 'cash', amount: 6480 }], paidBy: 'Wanjiru K.', paidAt: now - 309 * min },
-  { no: 1042, branch: 'wl', cashier: 'Brian M.', at: now - 260 * min, status: 'paid', lines: [line('p15', 1)], payments: [{ method: 'mpesa', amount: 6900, ref: 'SJK4H7QW2P' }], paidBy: 'Brian M.', paidAt: now - 258 * min },
+  { no: 1041, branch: 'wl', cashier: 'Wanjiru K.', at: now - 310 * min, status: 'paid', lines: [line('p1', 1), line('p10', 6)], payments: [{ method: 'cash', amount: 6480, tendered: 7000 }], paidBy: 'Wanjiru K.', paidAt: now - 309 * min },
+  { no: 1042, branch: 'wl', cashier: 'Brian M.', at: now - 260 * min, status: 'paid', lines: [line('p15', 1)], payments: [{ method: 'mpesa', amount: 6900, ref: 'SJK4H7QW2P', phone: '254712345678', stk: true }], paidBy: 'Brian M.', paidAt: now - 258 * min },
   { no: 1043, branch: 'wl', cashier: 'Wanjiru K.', at: now - 200 * min, status: 'paid', lines: [line('p6', 2), line('p11', 4)], payments: [{ method: 'cash', amount: 2000 }, { method: 'mpesa', amount: 2180, ref: 'SJK5B2LM9X' }], paidBy: 'Wanjiru K.', paidAt: now - 199 * min },
   { no: 1044, branch: 'wl', cashier: 'Brian M.', at: now - 140 * min, status: 'saved', label: 'Table 4', lines: [line('p10', 8), line('p2', 1)] },
-  { no: 1045, branch: 'wl', cashier: 'Wanjiru K.', at: now - 95 * min, status: 'paid', lines: [line('p8', 2), line('p4', 1)], payments: [{ method: 'mpesa', amount: 3850, ref: 'SJK6C8NT4R' }], paidBy: 'Wanjiru K.', paidAt: now - 94 * min },
+  { no: 1045, branch: 'wl', cashier: 'Wanjiru K.', at: now - 95 * min, status: 'paid', lines: [line('p8', 2), line('p4', 1)], payments: [{ method: 'mpesa', amount: 3850, ref: 'SJK6C8NT4R', phone: '254722481106', stk: true }], paidBy: 'Wanjiru K.', paidAt: now - 94 * min },
   { no: 1046, branch: 'wl', cashier: 'Brian M.', at: now - 40 * min, status: 'saved', label: 'Mr Kamau', lines: [line('p3', 1)] },
   { no: 1047, branch: 'wl', cashier: 'Brian M.', at: now - 25 * min, status: 'cancelled', lines: [line('p5', 1)], cancelledBy: 'Otieno J.' }
 ]

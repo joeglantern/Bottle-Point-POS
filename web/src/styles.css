@@ -537,3 +537,118 @@ tr.expand td { background: var(--ink-2); }
 .scan-try .chips button { font: 12px var(--f-num); }
 @media (prefers-reduced-motion: reduce) { .pulse::after, .scan-beam, .product.flash { animation: none; } }
 .scan-modal .modal-head h3 { font: 400 30px/1.1 var(--f-display); color: var(--text); letter-spacing: -0.01em; }
+
+/* ---------- receipt ---------- */
+.rc-shell {
+  display: grid; grid-template-columns: auto 280px; gap: 22px; align-items: start;
+  max-height: calc(100vh - 32px); max-width: 100%;
+}
+.rc-stage { overflow: auto; max-height: calc(100vh - 32px); padding: 4px 4px 18px; }
+.rc-stage.w80 { --paper: 302px; }
+.rc-stage.w58 { --paper: 219px; }
+.rc-panel {
+  background: var(--ink-1); border: 1px solid var(--line-2); border-radius: 18px; padding: 20px;
+  display: grid; gap: 12px; box-shadow: 0 30px 60px -30px var(--shadow);
+}
+.rc-paid { display: grid; grid-template-columns: 1fr auto; align-items: baseline; padding: 12px 14px; border-radius: 12px; background: var(--bg); border: 1px dashed var(--line-2); }
+.rc-paid span { font: italic 400 18px var(--f-display); color: var(--soft); }
+.rc-paid b { font: 500 20px var(--f-num); color: var(--gold-text); }
+.seg.two { grid-template-columns: 1fr 1fr; }
+
+/* the paper itself: same rules on screen and on the printer */
+.rc {
+  --ink: #141210;
+  --faint: #6c665c;
+  width: var(--paper, 302px);
+  background: #fbf8f1;
+  color: var(--ink);
+  font: 400 11.5px/1.45 var(--f-num);
+  padding: 18px 14px 26px;
+  position: relative;
+  box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 24px 50px -24px rgba(0,0,0,.55);
+  -webkit-mask: radial-gradient(5px at 50% 100%, #0000 98%, #000) 50% / 12px 100% repeat-x;
+          mask: radial-gradient(5px at 50% 100%, #0000 98%, #000) 50% / 12px 100% repeat-x;
+  animation: rc-feed .5s cubic-bezier(.2,.7,.2,1);
+}
+@keyframes rc-feed { from { transform: translateY(-14px); opacity: 0 } to { transform: none; opacity: 1 } }
+.rc::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,.012) 0 1px, transparent 1px 3px);
+}
+.rc-head { display: grid; justify-items: center; gap: 8px; text-align: center; }
+.rc-logo { width: 74%; max-width: 200px; filter: grayscale(1) contrast(1.15); }
+.rc-biz { display: grid; gap: 1px; color: var(--faint); font-size: 10.5px; }
+.rc-biz b { color: var(--ink); font: 600 11.5px var(--f-ui); letter-spacing: .08em; text-transform: uppercase; }
+
+.rc-title {
+  margin: 14px 0 10px; padding: 6px 0;
+  border-block: 1.5px solid var(--ink);
+  display: grid; grid-template-columns: 1fr auto; align-items: center;
+  font: 600 10.5px var(--f-ui); letter-spacing: .22em; text-transform: uppercase;
+}
+.rc-title em {
+  font: 700 9.5px var(--f-ui); letter-spacing: .2em; font-style: normal;
+  border: 1.5px solid var(--ink); padding: 1px 6px; transform: rotate(-4deg);
+}
+.is-refund .rc-title { background: var(--ink); color: #fbf8f1; padding-inline: 6px; }
+
+.rc-meta { display: grid; gap: 2px; margin: 0 0 10px; }
+.rc-meta div { display: grid; grid-template-columns: 74px 1fr; }
+.rc-meta dt { color: var(--faint); }
+.rc-meta dd { margin: 0; text-align: right; }
+
+.rc-items { width: 100%; border-collapse: collapse; border-top: 1px dashed #b5ae9f; }
+.rc-items td { padding: 6px 0; border-bottom: 1px dashed #d6d0c2; vertical-align: top; }
+.rc-name { display: block; font: 500 11.5px var(--f-ui); color: var(--ink); }
+.rc-qty { display: block; color: var(--faint); font-size: 10.5px; }
+.rc-amt { text-align: right; white-space: nowrap; padding-left: 10px; }
+
+.rc-sums { display: grid; gap: 2px; padding: 8px 0; }
+.rc-sums > div, .rc-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.rc-total {
+  margin: 6px 0 2px; padding: 8px 0; border-block: 1.5px solid var(--ink);
+  font: 700 15px var(--f-num); letter-spacing: -0.01em; align-items: baseline;
+}
+.rc-total > span:first-child { font: 600 11px var(--f-ui); letter-spacing: .2em; text-transform: uppercase; }
+.rc-total small { font: 600 10px var(--f-ui); margin-right: 4px; color: var(--faint); }
+.rc-vat { color: var(--faint); font-size: 10.5px; }
+
+.rc-pay { display: grid; gap: 6px; padding: 8px 0 4px; border-top: 1px dashed #b5ae9f; }
+.rc-sub { display: grid; gap: 0; color: var(--faint); font-size: 10.5px; padding-left: 10px; border-left: 2px solid #d6d0c2; margin-top: 2px; }
+.rc-code { color: var(--ink); letter-spacing: .08em; }
+.rc-change { font-weight: 700; padding-top: 4px; }
+
+.rc-foot { display: grid; justify-items: center; gap: 4px; margin-top: 14px; text-align: center; }
+.rc-barcode { width: 80%; height: 40px; }
+.rc-ref { letter-spacing: .3em; font-size: 10px; color: var(--faint); }
+.rc-thanks { font: italic 400 17px var(--f-display); margin-top: 6px; }
+.rc-law { color: var(--faint); font-size: 9.5px; max-width: 30ch; }
+
+.rc-stage.w58 .rc { font-size: 10.5px; padding-inline: 10px; }
+.rc-stage.w58 .rc-total { font-size: 13.5px; }
+.rc-stage.w58 .rc-meta div { grid-template-columns: 60px 1fr; }
+
+@media (max-width: 720px) {
+  .rc-shell { grid-template-columns: 1fr; justify-items: center; overflow: auto; }
+  .rc-stage { max-height: none; }
+  .rc-panel { width: min(340px, 100%); }
+}
+
+/* ---------- printing: only the paper, at the real width ---------- */
+@media print {
+  @page { margin: 0; }
+  html, body { background: #fff !important; }
+  body * { visibility: hidden !important; }
+  .rc-print-root, .rc-print-root * { visibility: visible !important; }
+  .rc-print-root { position: absolute; left: 0; top: 0; }
+  .scrim { position: static; background: none; backdrop-filter: none; padding: 0; }
+  .rc {
+    width: 80mm; padding: 3mm 4mm 6mm; box-shadow: none; animation: none;
+    background: #fff; -webkit-mask: none; mask: none; font-size: 9pt;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .rc::before { display: none; }
+  [data-paper="58"] .rc { width: 58mm; padding-inline: 2mm; font-size: 8pt; }
+  .rc-logo { filter: grayscale(1) contrast(1.4); }
+}
+.rc-note { font: 600 9.5px var(--f-ui); letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }

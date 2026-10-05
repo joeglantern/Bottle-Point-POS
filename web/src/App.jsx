@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useBarcodeScanner, cameraScanSupported } from './scanner.js'
+import ReceiptModal, { parseReceiptCode } from './Receipt.jsx'
 import {
   BRANCHES, USERS, CATEGORIES, PRODUCTS, SEED_SALES, OTHER_BRANCHES, CUSTOMERS,
   ksh, saleTotal, ago, timeOf
@@ -132,7 +133,7 @@ function PayModal({ sale, usedCodes, onClose, onConfirm }) {
     }
     if (mode !== 'mpesa' && cashN < cashPart) return setErr('Cash received is less than the cash due.')
     const payments = []
-    if (cashPart > 0) payments.push({ method: 'cash', amount: cashPart })
+    if (cashPart > 0) payments.push({ method: 'cash', amount: cashPart, tendered: mode === 'split' || mode === 'cash' ? cashN : cashPart })
     if (mpesaN > 0) payments.push({ method: 'mpesa', amount: mpesaN, ref: c })
     onConfirm(payments)
   }
@@ -184,32 +185,33 @@ function PayModal({ sale, usedCodes, onClose, onConfirm }) {
   )
 }
 
-function Receipt({ sale, onClose }) {
-  return (
-    <div className="scrim" onClick={onClose}>
-      <div className="receipt" onClick={e => e.stopPropagation()}>
-        <div className="r-head">
-          <img src="/brand/bottle-point-mark.png" alt="" width="26" />
-          <b>BOTTLE POINT</b>
-          <small>{BRANCHES.find(b => b.id === sale.branch).name} branch</small>
-        </div>
-        <div className="r-meta">
-          <span>Sale #{sale.no}</span><span>{timeOf(sale.paidAt)}</span>
-        </div>
-        <div className="r-lines">
-          {sale.lines.map(l => (
-            <div key={l.pid}><span>{l.qty} x {l.name}</span><span>{ksh(l.price * l.qty)}</span></div>
-          ))}
-        </div>
-        <div className="r-total"><span>Total</span><span>{ksh(saleTotal(sale))}</span></div>
-        {sale.payments.map((p, i) => (
-          <div key={i} className="r-pay"><span>{p.method === 'cash' ? 'Cash' : 'M-Pesa ' + p.ref}</span><span>{ksh(p.amount)}</span></div>
-        ))}
-        <div className="r-foot">Served by {sale.paidBy}. Thank you.</div>
-        <button className="gold wide" onClick={onClose}>Done</button>
-      </div>
-    </div>
-  )
+// Demo sales are in shillings; the receipt system works in cents like the API.
+function toReceipt(sale, copy = false) {
+  const lines = sale.lines.map(l => ({ name: l.name, qty: l.qty, unitCents: l.price * 100 }))
+  const total = saleTotal(sale) * 100
+  return {
+    business: { name: 'Bottle Point Demo', address: 'Woodvale Grove, Westlands, Nairobi', phone: '0712 000 000' },
+    branch: { name: BRANCHES.find(b => b.id === sale.branch).name },
+    number: sale.no,
+    status: sale.status === 'refunded' ? 'REFUNDED' : 'PAID',
+    paidAt: sale.paidAt || sale.at,
+    refundedAt: sale.refundedAt,
+    servedBy: sale.paidBy || sale.cashier,
+    label: sale.label,
+    lines,
+    subtotalCents: total,
+    discountCents: 0,
+    totalCents: total,
+    payments: (sale.payments || []).map(p => ({
+      method: p.method === 'cash' ? 'CASH' : 'MPESA',
+      amountCents: p.amount * 100,
+      tenderedCents: p.method === 'cash' ? (p.tendered || p.amount) * 100 : null,
+      mpesaRef: p.ref,
+      phone: p.phone,
+      verification: p.stk ? 'STK_CONFIRMED' : 'MANUAL_UNVERIFIED'
+    })),
+    copy
+  }
 }
 
 /* ---------------- Scanner ---------------- */
@@ -302,6 +304,15 @@ function Cashier({ user, sales, setSales, nextNo, toast }) {
   const [flash, setFlash] = useState(null)
 
   const onScan = code => {
+    const no = parseReceiptCode(code)
+    if (no) {
+      const s = sales.find(x => x.no === no && x.branch === user.branch)
+      setLastScan({ code, name: s ? 'receipt #' + no : null, at: Date.now() })
+      if (!s) return toast('No sale #' + no + ' in this branch')
+      if (s.status === 'saved') return openSaved(s)
+      if (s.status === 'paid' || s.status === 'refunded') return setReceipt({ sale: s, copy: true })
+      return toast('Sale #' + no + ' is ' + s.status)
+    }
     const p = PRODUCTS.find(x => x.code === code)
     setLastScan({ code, name: p ? p.name : null, at: Date.now() })
     if (p) {
@@ -359,7 +370,7 @@ function Cashier({ user, sales, setSales, nextNo, toast }) {
     const paid = { ...paying, status: 'paid', payments, paidBy: user.name, paidAt: Date.now() }
     setSales(all => all.map(x => x.no === paid.no ? paid : x))
     setPaying(null)
-    setReceipt(paid)
+    setReceipt({ sale: paid, copy: false })
   }
 
   return (
@@ -449,7 +460,7 @@ function Cashier({ user, sales, setSales, nextNo, toast }) {
 
       {scanOpen && <ScanModal onCode={code => { onScan(code); setScanOpen(false) }} onClose={() => setScanOpen(false)} />}
       {paying && <PayModal sale={paying} usedCodes={usedCodes} onClose={() => setPaying(null)} onConfirm={confirmPay} />}
-      {receipt && <Receipt sale={receipt} onClose={() => setReceipt(null)} />}
+      {receipt && <ReceiptModal receipt={toReceipt(receipt.sale, receipt.copy)} onClose={() => setReceipt(null)} onNewSale={receipt.copy ? null : () => setReceipt(null)} />}
     </div>
   )
 }
@@ -473,7 +484,7 @@ function Manager({ sales, setSales, float, user, toast }) {
   const unpaid = today.filter(s => s.status === 'saved')
   const cancelled = today.filter(s => ['cancelled', 'refunded', 'refund_requested'].includes(s.status))
   const refundCash = today.filter(s => s.status === 'refunded').flatMap(s => s.payments).filter(p => p.method === 'cash').reduce((a, p) => a + p.amount, 0)
-  const decide = (no, status) => { setSales(all => all.map(x => x.no === no ? { ...x, status, approvedBy: user.name } : x)); toast('Sale #' + no + ' ' + status) }
+  const decide = (no, status) => { setSales(all => all.map(x => x.no === no ? { ...x, status, approvedBy: user.name, refundedAt: status === 'refunded' ? Date.now() : x.refundedAt } : x)); toast('Sale #' + no + ' ' + status) }
   const pay = paid.flatMap(s => s.payments)
   const cash = pay.filter(p => p.method === 'cash').reduce((a, p) => a + p.amount, 0)
   const mpesa = pay.filter(p => p.method === 'mpesa').reduce((a, p) => a + p.amount, 0)
@@ -680,7 +691,7 @@ function Transactions({ sales, setSales, user, toast }) {
                           {s.paidBy && <div className="muted">Confirmed by {s.paidBy} at {timeOf(s.paidAt)}</div>}
                         </div>
                         <div className="expand-act">
-                          {s.status === 'paid' && <button className="mini" onClick={() => setReceipt(s)}>View receipt</button>}
+                          {(s.status === 'paid' || s.status === 'refunded') && <button className="mini" onClick={() => setReceipt(s)}>Reprint receipt</button>}
                           {s.status === 'paid' && <button className="mini" onClick={() => { setSales(all => all.map(x => x.no === s.no ? { ...x, status: 'refund_requested', refundBy: user.name } : x)); toast('Refund sent to manager for approval') }}>Request refund</button>}
                         </div>
                       </div>
@@ -692,7 +703,7 @@ function Transactions({ sales, setSales, user, toast }) {
           </tbody>
         </table>
       </div>
-      {receipt && <Receipt sale={receipt} onClose={() => setReceipt(null)} />}
+      {receipt && <ReceiptModal receipt={toReceipt(receipt, true)} onClose={() => setReceipt(null)} />}
     </div>
   )
 }

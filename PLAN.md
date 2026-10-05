@@ -215,7 +215,7 @@ model AuditLog {
 
 ## 4. Security
 
-1. **Auth.** Better Auth with username plus a 4 to 6 digit PIN. PINs hashed with argon2id. Lock the user for 5 minutes after 5 wrong PINs. Session cookie is `HttpOnly`, `Secure`, `SameSite=Strict`, short idle timeout on tills (15 minutes) and longer for owners.
+1. **Auth.** Better Auth with username plus a 4 to 6 digit PIN. PINs hashed with scrypt (Better Auth default). Lock the user for 5 minutes after 5 wrong PINs. Session cookie is `HttpOnly`, `Secure`, `SameSite=Strict`, short idle timeout on tills (15 minutes) and longer for owners.
 2. **Owner and manager accounts** also get a password and optional TOTP, since they can see money across branches.
 3. **Authorisation on the server, every request.** Middleware resolves `user`, `role`, and the set of allowed `branchId`s. Every query is scoped by branch. The frontend hiding a button is never the control.
 4. **Money rules live in the database too.** `mpesaRef` unique index, `CHECK (amount_cents > 0)`, payment sum equals total checked inside the transaction with the sale row locked (`SELECT ... FOR UPDATE`).
