@@ -14,7 +14,13 @@ const schema = z.object({
   MPESA_SHORTCODE: z.string().default('174379'),
   MPESA_PASSKEY: z.string().default(''),
   MPESA_CALLBACK_URL: z.string().default('http://localhost:3000/api/mpesa/callback'),
-  MPESA_CALLBACK_TOKEN: z.string().min(16, 'MPESA_CALLBACK_TOKEN must be at least 16 characters')
+  MPESA_CALLBACK_TOKEN: z.string().min(16, 'MPESA_CALLBACK_TOKEN must be at least 16 characters'),
+  // CustomerPayBillOnline for a paybill, CustomerBuyGoodsOnline for a till number
+  MPESA_TRANSACTION_TYPE: z.enum(['CustomerPayBillOnline', 'CustomerBuyGoodsOnline']).default('CustomerPayBillOnline'),
+  // Buy Goods sends money to the till number, not the shortcode. Empty means the shortcode.
+  MPESA_PARTY_B: z.string().default(''),
+  // mock mode only: delay before the fake Safaricom callback. 0 or less turns it off.
+  MPESA_MOCK_DELAY_MS: z.coerce.number().int().default(2500)
 })
 
 const parsed = schema.safeParse(process.env)

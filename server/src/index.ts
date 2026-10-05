@@ -4,6 +4,7 @@ import { createApp } from './app.js'
 import { env } from './env.js'
 import { initRealtime } from './realtime.js'
 import { prisma } from './db.js'
+import { startMpesaSweeper } from './rules/mpesa.js'
 
 const app = createApp()
 const server = serve({ fetch: app.fetch, port: env.PORT }, info => {
@@ -11,8 +12,10 @@ const server = serve({ fetch: app.fetch, port: env.PORT }, info => {
 }) as Server
 
 initRealtime(server)
+const stopMpesaSweeper = startMpesaSweeper()
 
 const shutdown = async () => {
+  stopMpesaSweeper()
   server.close()
   await prisma.$disconnect()
   process.exit(0)

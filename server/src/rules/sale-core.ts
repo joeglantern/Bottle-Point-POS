@@ -133,6 +133,19 @@ export async function applyPayment(tx: Tx, input: PaymentInput) {
     throw unprocessable('Cash received is less than the amount being paid.', 'short_cash')
   }
 
+  // Money taken into a shift must not land after that shift was counted and
+  // closed. FOR SHARE waits for a close in progress, then we re check.
+  // M-Pesa never sits in the drawer, so a late confirmation is still recorded,
+  // just without a shift.
+  let shiftId = input.shiftId ?? null
+  if (shiftId) {
+    const rows = await tx.$queryRaw<{ closedAt: Date | null }[]>`SELECT "closedAt" FROM "Shift" WHERE id = ${shiftId} FOR SHARE`
+    if (!rows.length || rows[0]!.closedAt) {
+      if (input.method === 'CASH') throw unprocessable('Your shift was closed. Open a new shift to take cash.', 'shift_closed')
+      shiftId = null
+    }
+  }
+
   if (input.mpesaRef) {
     const used = await tx.payment.findUnique({ where: { mpesaRef: input.mpesaRef } })
     if (used) throw conflict('This M-Pesa code is already linked to another sale.', 'mpesa_code_used')
@@ -149,7 +162,7 @@ export async function applyPayment(tx: Tx, input: PaymentInput) {
       verification: input.verification,
       mpesaRequestId: input.mpesaRequestId ?? null,
       receivedById: input.receivedById,
-      shiftId: input.shiftId ?? null
+      shiftId
     }
   })
 
