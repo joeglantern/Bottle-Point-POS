@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# design references and raw exports kept locally
+Gemini_Generated_Image_*.jpg
+ChatGPT Image *.png
