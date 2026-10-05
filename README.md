@@ -27,17 +27,16 @@ Open http://localhost:5173 and sign in as any user with PIN `1234`.
 
 ## Deploy
 
-First time, on the server:
-
-```
-scp deploy/server-setup.sh deploy/nginx.conf liban@156.67.25.84:~
-ssh liban@156.67.25.84 'sudo bash server-setup.sh'
-```
-
-Every release after that, from your machine:
+Live at http://156.67.25.84:8085 until a domain is set up.
 
 ```
 ./deploy/deploy.sh
 ```
 
-Each release goes into its own folder under `/var/www/bottle-point/releases` and `current` is switched over in one step, so rolling back is just pointing `current` at the previous folder. The last five releases are kept.
+That builds the app, uploads it to `~/apps/bottle-point/releases/<timestamp>` on the server and points `current` at it. It runs in its own `nginx:alpine` container (`bottle-point-web`) on port 8085, so the host nginx and the other sites on that server are not touched, and no sudo is needed. The last five releases are kept. To roll back, point `current` at an older release:
+
+```
+ssh liban@156.67.25.84 'cd ~/apps/bottle-point && ln -sfn releases/<older> current'
+```
+
+When a domain is ready, add a server block on the host nginx that proxies to `127.0.0.1:8085`, run certbot for it, then close 8085 to the public.
