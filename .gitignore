@@ -12,3 +12,4 @@ Thumbs.db
 # design references and raw exports kept locally
 Gemini_Generated_Image_*.jpg
 ChatGPT Image *.png
+e2e/shots/

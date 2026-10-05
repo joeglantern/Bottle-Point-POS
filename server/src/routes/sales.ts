@@ -286,6 +286,7 @@ salesRoutes.get('/:id/receipt', async c => {
       tenderedCents: p.tenderedCents,
       changeCents: p.changeCents,
       mpesaRef: p.mpesaRef,
+      phone: p.phone,
       verification: p.verification,
       receivedBy: who(p.receivedById),
       createdAt: p.createdAt

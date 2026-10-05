@@ -204,3 +204,31 @@ export default function ReceiptModal({ receipt, onClose, onNewSale, autoPrint = 
     </div>
   )
 }
+
+// GET /api/sales/:id/receipt into the shape the receipt draws.
+export function fromApiReceipt(r, copy = false) {
+  return {
+    business: { name: r.businessName },
+    branch: { name: r.branchName },
+    number: r.number,
+    status: r.status,
+    paidAt: r.paidAt,
+    refundedAt: r.refundedAt,
+    servedBy: r.paidBy?.name ?? r.createdBy?.name ?? '',
+    label: r.label,
+    customer: r.customer?.name ?? null,
+    lines: r.lines.map(l => ({ name: l.name, qty: l.qty, unitCents: l.unitCents })),
+    subtotalCents: r.subtotalCents,
+    discountCents: r.discountCents,
+    totalCents: r.totalCents,
+    payments: r.payments.map(p => ({
+      method: p.method,
+      amountCents: p.amountCents,
+      tenderedCents: p.tenderedCents,
+      mpesaRef: p.mpesaRef,
+      phone: p.phone,
+      verification: p.verification
+    })),
+    copy
+  }
+}
