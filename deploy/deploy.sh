@@ -8,6 +8,7 @@
 # Usage: ./deploy/deploy.sh
 #        DEPLOY_HOST=user@host PUBLIC_URL=http://1.2.3.4:8085 ./deploy/deploy.sh
 #        SEED_DEMO=1 ./deploy/deploy.sh     (load the demo business and PINs)
+#        DEPLOY_REF=<commit or tag> ./deploy/deploy.sh   (default HEAD)
 set -euo pipefail
 
 HOST="${DEPLOY_HOST:-liban@156.67.25.84}"
@@ -16,15 +17,29 @@ APP="apps/bottle-point"
 RELEASE="$(date +%Y%m%d%H%M%S)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# What gets shipped is a commit, not whatever happens to be on disk, so half
+# finished work never reaches a server. DEPLOY_REF=working ships the folder
+# as it is.
+REF="${DEPLOY_REF:-HEAD}"
+if [ "$REF" = working ]; then
+  SRC="$ROOT"
+  echo "Deploying the working folder as it is"
+else
+  SRC="$(mktemp -d)"
+  trap 'rm -rf "$SRC"' EXIT
+  git -C "$ROOT" archive "$REF" web server | tar -x -C "$SRC"
+  echo "Deploying $(git -C "$ROOT" log -1 --format='%h %s' "$REF")"
+fi
+
 echo "Building the web app..."
-cd "$ROOT/web"
+cd "$SRC/web"
 [ -d node_modules ] || npm ci --no-audit --no-fund
 npm run build
 
 echo "Uploading release $RELEASE to $HOST..."
 ssh "$HOST" "mkdir -p ~/$APP/web/releases/$RELEASE ~/$APP/conf ~/$APP/server"
 tar -C dist -czf - . | ssh "$HOST" "tar -xzf - -C ~/$APP/web/releases/$RELEASE"
-tar -C "$ROOT/server" --exclude=node_modules --exclude=dist --exclude=generated --exclude=.env --exclude=test --exclude=docs -czf - . \
+tar -C "$SRC/server" --exclude=node_modules --exclude=.snapshot --exclude=dist --exclude=generated --exclude=.env --exclude=test --exclude=docs -czf - . \
   | ssh "$HOST" "rm -rf ~/$APP/server && mkdir -p ~/$APP/server && tar -xzf - -C ~/$APP/server"
 ssh "$HOST" "cat > ~/$APP/docker-compose.yml" < "$ROOT/deploy/docker-compose.yml"
 ssh "$HOST" "cat > ~/$APP/conf/default.conf" < "$ROOT/deploy/nginx.conf"
