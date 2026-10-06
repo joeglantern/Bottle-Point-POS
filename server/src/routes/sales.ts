@@ -249,6 +249,18 @@ salesRoutes.post('/:id/pay', async c => {
   return c.json({ sale, changeCents })
 })
 
+// VAT contained in a VAT inclusive total: total - total / (1 + rate), rounded
+// half up to the cent. Whole numbers only (remainder, not a float division),
+// so the figure is exact for any amount.
+export function vatIncludedCents(totalCents: number, vatRateBps: number) {
+  if (vatRateBps <= 0 || totalCents <= 0) return 0
+  const scaled = totalCents * 10000
+  const divisor = 10000 + vatRateBps
+  const rest = scaled % divisor
+  const netCents = (scaled - rest) / divisor + (rest * 2 >= divisor ? 1 : 0)
+  return totalCents - netCents
+}
+
 // Everything a printed receipt needs.
 salesRoutes.get('/:id/receipt', async c => {
   const actor = c.get('actor')
@@ -262,8 +274,20 @@ salesRoutes.get('/:id/receipt', async c => {
   const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
   const who = (uid: string | null) => (uid ? (users.find(u => u.id === uid) ?? null) : null)
 
+  const biz = branch.business
   const receipt = {
-    businessName: branch.business.name,
+    businessName: biz.name,
+    // the shop's own details, as set by the owner in Admin
+    business: {
+      name: biz.name,
+      legalName: biz.legalName,
+      address: biz.address,
+      phone: biz.phone,
+      email: biz.email,
+      kraPin: biz.kraPin,
+      receiptFooter: biz.receiptFooter,
+      vatRateBps: biz.vatRateBps
+    },
     branchName: branch.name,
     saleId: sale.id,
     number: sale.number,
@@ -279,6 +303,8 @@ salesRoutes.get('/:id/receipt', async c => {
     subtotalCents: sale.subtotalCents,
     discountCents: sale.discountCents,
     totalCents: sale.totalCents,
+    // prices include VAT: this is the part of the total that is VAT
+    vatCents: vatIncludedCents(sale.totalCents, biz.vatRateBps),
     paidCents: sale.paidCents,
     payments: sale.payments.map(p => ({
       method: p.method,

@@ -14,7 +14,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
     "test": "vitest run",
-    "smoke": "tsx test/smoke.ts"
+    "smoke": "tsx test/smoke.ts",
+    "platform:admin": "tsx scripts/create-platform-admin.ts",
+    "billing:run": "tsx scripts/run-billing.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

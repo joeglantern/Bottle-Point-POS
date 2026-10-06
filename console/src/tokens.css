@@ -1,0 +1,74 @@
+/* Bottle Point brand tokens, shared in spirit with the POS: black, brass, paper. */
+
+:root {
+  --bg: #09090a;
+  --ink-1: #101011;
+  --ink-2: #161618;
+  --ink-3: #1e1e21;
+  --line: #242427;
+  --line-2: #303034;
+  --text: #f1ede4;
+  --soft: #b9b4a9;
+  --muted: #7d7972;
+  --gold: #c9a45c;
+  --gold-hi: #ead196;
+  --gold-lo: #7f6129;
+  --red: #de7466;
+  --green: #86b892;
+  --r: 16px;
+  --r-sm: 10px;
+  --gap: 16px;
+
+  /* San Francisco family. Apple devices use the real SF through the system
+     stack (SF cannot be served as a web font); everything else gets Inter
+     and JetBrains Mono, the closest open matches. */
+  --f-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  --f-ui: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  --f-num: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  --ink-0: #0c0c0d;
+  --on-gold: var(--on-gold);
+  --gold-text: #ead196;
+  --grid-line: rgba(255,255,255,.025);
+  --glow: rgba(201,164,92,.13);
+  --shadow: rgba(0,0,0,.8);
+  --scrim: var(--scrim);
+
+  color-scheme: dark;
+}
+
+/* Light: warm paper, ink, brass */
+:root[data-theme="light"] {
+  --bg: #f4f0e7;
+  --ink-0: #efe9dd;
+  --ink-1: #fffdf8;
+  --ink-2: #faf6ee;
+  --ink-3: #ece5d6;
+  --line: #e2d9c7;
+  --line-2: #d2c6ae;
+  --text: #17140f;
+  --soft: #4b453a;
+  --muted: #857d6f;
+  --gold: #b48c42;
+  --gold-hi: #c9a45c;
+  --gold-lo: #b9995a;
+  --gold-text: #7d5e22;
+  --red: #b2483b;
+  --green: #3f7a4f;
+  --grid-line: rgba(23,20,15,.035);
+  --glow: rgba(180,140,66,.16);
+  --shadow: rgba(60,45,20,.25);
+  --scrim: rgba(30,25,15,.35);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body, #root { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 400 14px/1.45 var(--f-ui);
+  -webkit-font-smoothing: antialiased;
+  font-optical-sizing: auto;
+}
+button, input, select, textarea { font: inherit; color: inherit; }

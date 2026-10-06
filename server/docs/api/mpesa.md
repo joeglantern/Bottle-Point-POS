@@ -77,6 +77,7 @@ Errors:
 - 422 `whole_shillings` amount has cents (also when the default due amount has cents: send an explicit amount)
 - 409 `stk_pending` a prompt for this sale is still waiting. Cancel it or wait.
 - 502 `mpesa_unavailable` Safaricom refused or did not answer. The request is stored as `FAILED` with the reason. Offer to retry or to type the SMS code.
+- 502 `mpesa_misconfigured` the shop's own M-Pesa settings cannot be used (unreadable or missing keys). The request is stored as `FAILED`. The owner must check the settings.
 
 ### GET /api/mpesa/requests?saleId=&status=&branchId=
 Any signed in user. Newest first, at most 200. Response `200 { requests: [request] }`.
@@ -89,7 +90,7 @@ Any signed in user. Response `200 { request }`. 404 if not in your branches.
 Cashier, manager, owner. Asks Safaricom for the result of a `PENDING` request
 and applies it. If Safaricom is still waiting, or the request is no longer
 pending, the request comes back unchanged. Body: none.
-Response `200 { request }`. Errors: 404, 502 `mpesa_unavailable`.
+Response `200 { request }`. Errors: 404, 502 `mpesa_unavailable`, 502 `mpesa_misconfigured`.
 
 ### POST /api/mpesa/requests/:id/cancel
 Cashier, manager, owner. The till stops waiting for a `PENDING` request
@@ -99,7 +100,9 @@ to the sale if it can take it, otherwise flagged as unlinked.
 Response `200 { request }`. Errors: 404, 409 `not_pending`.
 
 ### POST /api/mpesa/requests/:id/simulate
-Manager or owner, mock mode only (404 in sandbox and production). For demos.
+Manager or owner, only where the shop's M-Pesa is a simulation: its own enabled
+settings in mode MOCK, or no enabled settings and `MPESA_MODE=mock` (404
+otherwise). For demos.
 Body: `{ outcome: 'success' | 'failed' | 'cancelled' }`. Response `200 { request }`.
 Errors: 400, 403, 404.
 
@@ -148,7 +151,36 @@ the fake Safaricom answers, by the end of the phone number:
 | 222 | never answers (stays PENDING until timeout) |
 | anything else | SUCCESS with a random receipt |
 
-## Settings
+## Settings per business
+
+Each shop can use its own Paybill or Till. The owner saves them through
+`GET / PUT /api/admin/mpesa`, `DELETE /api/admin/mpesa/secrets` and
+`POST /api/admin/mpesa/test` (see the admin API docs). The keys are stored
+encrypted (`lib/secrets.ts`) and never returned.
+
+Which settings a request uses (`darajaFor(businessId)` in `lib/daraja.ts`):
+
+- The business has an enabled `MpesaConfig`: its mode, shortcode, till number
+  and keys are used, for the STK push and for every later status query of that
+  request. Mode MOCK gives that shop the simulation whatever the server mode is.
+- Otherwise the server wide settings below apply, exactly as before.
+
+OAuth tokens are cached per business, mode and credentials, so a key or mode
+change always signs in again. The callback URL and token are server wide for
+every shop: answers are matched by CheckoutRequestID.
+
+A status query uses the client that sent the request while the server still
+remembers it (in memory), and the business's current settings after a restart.
+
+If the stored keys cannot be decrypted, or an enabled live configuration lacks
+a key or shortcode, `POST /api/mpesa/stk` and the query answer
+`502 mpesa_misconfigured`: "M-Pesa is not set up correctly, ask the owner to
+check the settings." The request is marked FAILED like any other failed push.
+
+Test hooks: `setDaraja(client)` swaps the server wide client,
+`setDarajaFetch(fetch)` sets the fetch used by per business clients.
+
+## Server wide settings
 
 | variable | meaning |
 | --- | --- |

@@ -7,6 +7,7 @@ import { body, id, parse } from '../lib/validate.js'
 import { createStaff, pinSchemaRule, setPin } from '../lib/users.js'
 import { requireRole, type Actor, type AppEnv } from '../middleware/auth.js'
 import { ensureStockRows } from '../rules/catalog.js'
+import { assertWithinPlan } from '../rules/usage.js'
 
 export const adminRoutes = new Hono<AppEnv>()
 
@@ -42,6 +43,13 @@ const pinSchema = z.object({ pin })
 
 const isUnique = (err: unknown) => err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
 
+// Plan limits are a count then an insert. Everything that adds a branch, a
+// staff member or a product takes this lock first, so two requests at the
+// limit cannot both pass the count. Always the first lock of the transaction.
+async function lockBusiness(tx: Tx, businessId: string) {
+  await tx.$queryRaw`SELECT id FROM "Business" WHERE id = ${businessId} FOR UPDATE`
+}
+
 // ---------- Branches ----------
 
 const branchSelect = { id: true, name: true, active: true, createdAt: true } as const
@@ -59,6 +67,8 @@ adminRoutes.post('/branches', requireRole('OWNER'), async c => {
   if (taken) throw conflict(`There is already a branch called ${taken.name}.`, 'duplicate_branch')
   try {
     const branch = await prisma.$transaction(async tx => {
+      await lockBusiness(tx, actor.businessId)
+      await assertWithinPlan(tx, actor.businessId, 'branches')
       const b = await tx.branch.create({ data: { businessId: actor.businessId, name: input.name }, select: branchSelect })
       const products = await tx.product.findMany({ where: { businessId: actor.businessId, active: true }, select: { id: true } })
       await ensureStockRows(tx, [b.id], products.map(p => p.id))
@@ -86,6 +96,14 @@ adminRoutes.patch('/branches/:id', requireRole('OWNER'), async c => {
   }
   try {
     const branch = await prisma.$transaction(async tx => {
+      // Reopening a closed branch uses a place on the plan. The row is read
+      // again under the lock, because it may have been closed or reopened
+      // since the request started: only a closed branch counts as adding.
+      if (input.active === true) {
+        await lockBusiness(tx, actor.businessId)
+        const now = await tx.branch.findUniqueOrThrow({ where: { id: branchId }, select: { active: true } })
+        if (!now.active) await assertWithinPlan(tx, actor.businessId, 'branches')
+      }
       if (input.active === false && before.active) {
         const others = await tx.branch.count({ where: { businessId: actor.businessId, active: true, id: { not: branchId } } })
         if (!others) throw unprocessable('A business needs at least one active branch.', 'last_branch')
@@ -168,6 +186,8 @@ adminRoutes.post('/users', requireRole('OWNER'), async c => {
 
   try {
     const userId = await prisma.$transaction(async tx => {
+      await lockBusiness(tx, actor.businessId)
+      await assertWithinPlan(tx, actor.businessId, 'staff')
       const u = await createStaff(tx, { businessId: actor.businessId, name: input.name, username: input.username, pin: input.pin, role: input.role, branchIds: ids })
       await audit(tx, actor, 'user.created', 'user', u.id, { name: u.name, username: u.username, role: u.role, branchIds: ids })
       return u.id
@@ -199,6 +219,15 @@ adminRoutes.patch('/users/:id', requireRole('OWNER'), async c => {
   if (nextRole !== 'OWNER' && nextActive && !nextBranches.length) throw badRequest('Pick at least one branch for this person.')
 
   const user = await prisma.$transaction(async tx => {
+    // Switching someone back on uses a place on the plan. The row is read
+    // again under the lock, because it may have been switched off or on since
+    // the request started: only someone who is off counts as adding. The
+    // business lock always comes before the owners lock.
+    if (input.active === true) {
+      await lockBusiness(tx, actor.businessId)
+      const now = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { active: true } })
+      if (!now.active) await assertWithinPlan(tx, actor.businessId, 'staff')
+    }
     const removingOwner = before.role === 'OWNER' && before.active && (nextRole !== 'OWNER' || !nextActive)
     if (removingOwner) {
       await lockOwners(tx, actor.businessId)

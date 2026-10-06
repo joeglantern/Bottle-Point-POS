@@ -1,12 +1,13 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { prisma, Prisma, type Product } from '../db.js'
+import { prisma, Prisma, type Product, type Tx } from '../db.js'
 import { audit } from '../lib/audit.js'
 import { AppError, conflict, notFound } from '../lib/errors.js'
 import { body, id, parse, positiveCents, query } from '../lib/validate.js'
 import { atLeast, requireRole, type Actor, type AppEnv } from '../middleware/auth.js'
 import { emitToBusiness, Events } from '../realtime.js'
 import { barcode, ensureStockRows, stockBranchFor, toProductDTO } from '../rules/catalog.js'
+import { assertWithinPlan } from '../rules/usage.js'
 
 export const productRoutes = new Hono<AppEnv>()
 
@@ -48,6 +49,13 @@ const duplicateBarcode = (code: string) => conflict(`Another product already use
 
 function isUniqueError(err: unknown) {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
+}
+
+// Plan limits are a count then an insert. Taking this lock first means two
+// requests at the limit cannot both pass the count. Always taken before the
+// product row lock, never after it.
+async function lockBusiness(tx: Tx, businessId: string) {
+  await tx.$queryRaw`SELECT id FROM "Business" WHERE id = ${businessId} FOR UPDATE`
 }
 
 async function stockFor(branchId: string | null, productIds: string[]) {
@@ -124,6 +132,8 @@ productRoutes.post('/', requireRole('MANAGER'), async c => {
   let product: Product
   try {
     product = await prisma.$transaction(async tx => {
+      await lockBusiness(tx, actor.businessId)
+      await assertWithinPlan(tx, actor.businessId, 'products')
       const p = await tx.product.create({
         data: {
           businessId: actor.businessId,
@@ -161,9 +171,16 @@ productRoutes.patch('/:id', requireRole('MANAGER'), async c => {
   let product: Product
   try {
     product = await prisma.$transaction(async tx => {
+      // Only a request that may bring an archived product back needs the
+      // business lock. It comes before the product lock, in the same order as
+      // every other path.
+      if (input.active === true) await lockBusiness(tx, actor.businessId)
       const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Product" WHERE id = ${productId} FOR UPDATE`
       if (!rows.length) throw notFound('Product')
       const before = await tx.product.findUniqueOrThrow({ where: { id: productId } })
+      // Bringing an archived product back uses a place on the plan. A product
+      // that is already on sale adds nothing and is never refused.
+      if (input.active === true && !before.active) await assertWithinPlan(tx, actor.businessId, 'products')
       const p = await tx.product.update({ where: { id: productId }, data: input })
       // Sale lines keep their own price snapshot, so this never rewrites history.
       if (input.priceCents !== undefined && input.priceCents !== before.priceCents) {

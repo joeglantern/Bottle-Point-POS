@@ -7,7 +7,7 @@ import { prisma, Prisma, type MpesaRequest, type MpesaStatus, type Tx } from '..
 import { env } from '../env.js'
 import { audit } from '../lib/audit.js'
 import { AppError } from '../lib/errors.js'
-import { fakeReceipt, getDaraja, mockResult } from '../lib/daraja.js'
+import { darajaForCheckout, fakeReceipt, findMockEntry, mockResult } from '../lib/daraja.js'
 import { emitToBranch, Events } from '../realtime.js'
 import { applyPayment, emitSale, emitStock } from './sale-core.js'
 
@@ -321,7 +321,9 @@ export async function settleMpesaRequest(requestId: string, outcome: StkOutcome,
 export async function queryMpesaRequest(requestId: string) {
   const req = await prisma.mpesaRequest.findUniqueOrThrow({ where: { id: requestId } })
   if (req.status !== 'PENDING' || !req.checkoutRequestId) return { request: toRequestDTO(req), changed: false, paid: false, unlinked: false }
-  const r = await getDaraja().stkQuery(req.checkoutRequestId)
+  // asked with the settings of the business that sent it
+  const daraja = await darajaForCheckout(req.checkoutRequestId, req.branchId)
+  const r = await daraja.stkQuery(req.checkoutRequestId)
   if (r.state === 'pending') return { request: toRequestDTO(req), changed: false, paid: false, unlinked: false }
   const meta = { receipt: r.receipt ?? null, amountCents: r.amountCents ?? null, phone: r.phone ?? null }
   return settleMpesaRequest(req.id, outcomeFromResult(r.resultCode, r.resultDesc, meta), { stkQuery: r })
@@ -364,7 +366,7 @@ export function buildStkCallback(input: {
 
 // Plays the answer the mock planned for this checkout (from the phone ending).
 export async function runMockCallback(checkoutRequestId: string) {
-  const entry = getDaraja().mockState.get(checkoutRequestId)
+  const entry = findMockEntry(checkoutRequestId)
   if (!entry || entry.plan.outcome === 'never') return null
   const r = mockResult(entry)
   return handleStkCallback(
@@ -373,7 +375,8 @@ export async function runMockCallback(checkoutRequestId: string) {
 }
 
 export function scheduleMockCallback(checkoutRequestId: string) {
-  if (getDaraja().mode !== 'mock' || mpesaSettings.mockDelayMs <= 0) return
+  // only checkouts a mock client sent have a planned answer
+  if (!findMockEntry(checkoutRequestId) || mpesaSettings.mockDelayMs <= 0) return
   const t = setTimeout(() => {
     runMockCallback(checkoutRequestId).catch(err => console.error('mpesa mock callback failed', err))
   }, mpesaSettings.mockDelayMs)
@@ -383,7 +386,7 @@ export function scheduleMockCallback(checkoutRequestId: string) {
 // Demo button: force an outcome for a pending mock request.
 export async function simulateOutcome(requestId: string, outcome: 'success' | 'failed' | 'cancelled') {
   const req = await prisma.mpesaRequest.findUniqueOrThrow({ where: { id: requestId } })
-  const entry = req.checkoutRequestId ? getDaraja().mockState.get(req.checkoutRequestId) : undefined
+  const entry = req.checkoutRequestId ? findMockEntry(req.checkoutRequestId) : undefined
   const receipt = entry?.plan.outcome === 'success' ? entry.plan.receipt : fakeReceipt()
   const r =
     outcome === 'success'

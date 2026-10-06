@@ -7,7 +7,7 @@ import { assertRole, branchFor, requireRole, type Actor, type AppEnv } from '../
 import { AppError, conflict, notFound, unprocessable } from '../lib/errors.js'
 import { body, id, phone, query } from '../lib/validate.js'
 import { audit } from '../lib/audit.js'
-import { getDaraja } from '../lib/daraja.js'
+import { darajaFor, rememberCheckout } from '../lib/daraja.js'
 import { emitToBranch, Events } from '../realtime.js'
 import { emitSale, lockSale, openShift } from '../rules/sale-core.js'
 import {
@@ -97,7 +97,9 @@ mpesaRoutes.post('/stk', async c => {
   // locked while we wait for Safaricom.
   let req = created.req
   try {
-    const sent = await getDaraja().stkPush({
+    // the shop's own Paybill or Till when it has one, else the server wide one
+    const daraja = await darajaFor(actor.businessId)
+    const sent = await daraja.stkPush({
       phone: req.phone,
       amountCents: req.amountCents,
       accountReference: `BP${created.saleNumber}`,
@@ -107,6 +109,7 @@ mpesaRoutes.post('/stk', async c => {
       where: { id: req.id },
       data: { merchantRequestId: sent.merchantRequestId, checkoutRequestId: sent.checkoutRequestId }
     })
+    rememberCheckout(sent.checkoutRequestId, daraja)
     scheduleMockCallback(sent.checkoutRequestId)
   } catch (err) {
     const message = err instanceof AppError ? err.message : 'Could not reach M-Pesa.'
@@ -183,7 +186,9 @@ const simulateSchema = z.object({ outcome: z.enum(['success', 'failed', 'cancell
 
 mpesaRoutes.post('/requests/:id/simulate', async c => {
   const actor = c.get('actor')
-  if (getDaraja().mode !== 'mock') throw notFound()
+  // the demo button exists only where this shop's M-Pesa is a simulation
+  const mode = await darajaFor(actor.businessId).then(d => d.mode, () => null)
+  if (mode !== 'mock') throw notFound()
   assertRole(actor, 'MANAGER')
   const req = await requestForActor(actor, c.req.param('id'))
   const input = await body(c, simulateSchema)

@@ -81,12 +81,15 @@ Errors:
 Only for PAID or REFUNDED sales. Response 200:
 ```
 { receipt: { businessName, branchName, saleId, number, status, label, customer, createdAt, paidAt, refundedAt,
+    business: { name, legalName, address, phone, email, kraPin, receiptFooter, vatRateBps },
     createdBy: { id, name }|null, paidBy: { id, name }|null,
     lines: [{ productId, name, qty, unitCents, lineCents }],
-    subtotalCents, discountCents, totalCents, paidCents,
-    payments: [{ method, amountCents, tenderedCents, changeCents, mpesaRef, verification, receivedBy: {id,name}|null, createdAt }],
+    subtotalCents, discountCents, totalCents, vatCents, paidCents,
+    payments: [{ method, amountCents, tenderedCents, changeCents, mpesaRef, phone, verification, receivedBy: {id,name}|null, createdAt }],
     changeCents } }
 ```
+- `business` is the shop's own details as the owner set them in Admin (`PATCH /api/admin/business`), read at the time the receipt is requested. `name` is a string and equals `businessName` (kept for older screens). `legalName`, `address`, `phone`, `email`, `kraPin` and `receiptFooter` are `string|null`: print a line only when it is set. `vatRateBps` is an integer in basis points (1600 = 16%, 0 = the shop is not registered for VAT).
+- `vatCents` (integer cents) is the VAT already contained in `totalCents` at `business.vatRateBps`. Prices include VAT, so it is shown for information and never added to the total: `vatCents = totalCents - round(totalCents * 10000 / (10000 + vatRateBps))`, rounded half up, worked in whole numbers so it is exact to the cent. It is 0 when the rate is 0. Example: a total of 536000 at 1600 holds 73931 of VAT. The amount before VAT is `totalCents - vatCents`.
 Errors: 404 `not_found`, 422 `sale_not_paid`.
 
 ## Realtime

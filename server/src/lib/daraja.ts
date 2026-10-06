@@ -2,8 +2,10 @@
 // mock mode never touches the network so the app works offline and in tests.
 
 import { randomBytes } from 'node:crypto'
+import { prisma } from '../db.js'
 import { env } from '../env.js'
 import { AppError } from './errors.js'
+import { decryptSecret } from './secrets.js'
 
 export type DarajaMode = 'mock' | 'sandbox' | 'production'
 
@@ -113,13 +115,12 @@ function darajaMessage(json: any): string | null {
 
 export class DarajaClient {
   private token: { value: string; expiresAt: number } | null = null
-  // mock mode: what each fake checkout will answer
-  readonly mockState = new Map<string, MockEntry>()
-
   constructor(
     readonly cfg: DarajaConfig,
     private fetchImpl: FetchLike = (url, init) => fetch(url, init),
-    private now: () => Date = () => new Date()
+    private now: () => Date = () => new Date(),
+    // mock mode: what each fake checkout will answer
+    readonly mockState: Map<string, MockEntry> = new Map()
   ) {}
 
   get mode() {
@@ -296,6 +297,8 @@ export function configFromEnv(): DarajaConfig {
 
 let client: DarajaClient | null = null
 
+// The server wide client (env settings). Shops without their own enabled
+// M-Pesa settings use this one.
 export function getDaraja() {
   if (!client) client = new DarajaClient(configFromEnv())
   return client
@@ -304,4 +307,138 @@ export function getDaraja() {
 // Tests swap in a client with a fake fetch. Pass null to go back to the default.
 export function setDaraja(c: DarajaClient | null) {
   client = c
+}
+
+// ---------- one client per business ----------
+
+const MISCONFIGURED = 'M-Pesa is not set up correctly, ask the owner to check the settings.'
+export const misconfigured = (details?: unknown) => new AppError(502, 'mpesa_misconfigured', MISCONFIGURED, details)
+
+export type StoredMpesaConfig = {
+  businessId: string
+  enabled: boolean
+  mode: 'MOCK' | 'SANDBOX' | 'PRODUCTION'
+  shortcode: string | null
+  partyB: string | null
+  transactionType: string
+  consumerKeyEnc: string | null
+  consumerSecretEnc: string | null
+  passkeyEnc: string | null
+}
+
+// Turns a stored row into a client configuration. The callback URL and token
+// stay server wide: answers are matched by CheckoutRequestID.
+// Throws the 502 "not set up correctly" error when a secret cannot be read or
+// something a live mode needs is missing.
+export function configFromStored(row: StoredMpesaConfig): DarajaConfig {
+  const mode = row.mode.toLowerCase() as DarajaMode
+  const open = (stored: string | null) => {
+    if (!stored) return ''
+    try {
+      return decryptSecret(stored)
+    } catch {
+      throw misconfigured()
+    }
+  }
+  const base = configFromEnv()
+  const transactionType = row.transactionType === 'CustomerBuyGoodsOnline' ? 'CustomerBuyGoodsOnline' : 'CustomerPayBillOnline'
+  if (mode === 'mock') {
+    // a simulation needs no keys, so unreadable ones must not block it
+    return { ...base, mode, consumerKey: '', consumerSecret: '', passkey: '', shortcode: row.shortcode ?? base.shortcode, partyB: row.partyB ?? '', transactionType }
+  }
+  const cfg: DarajaConfig = {
+    ...base,
+    mode,
+    consumerKey: open(row.consumerKeyEnc),
+    consumerSecret: open(row.consumerSecretEnc),
+    passkey: open(row.passkeyEnc),
+    shortcode: row.shortcode ?? '',
+    partyB: row.partyB ?? '',
+    transactionType
+  }
+  if (!cfg.consumerKey || !cfg.consumerSecret || !cfg.passkey || !cfg.shortcode) throw misconfigured()
+  if (transactionType === 'CustomerBuyGoodsOnline' && !cfg.partyB) throw misconfigured()
+  return cfg
+}
+
+// Tests: the fetch used by clients built from stored settings. null = real fetch.
+let businessFetch: FetchLike | null = null
+
+export function setDarajaFetch(f: FetchLike | null) {
+  businessFetch = f
+  resetDarajaCache()
+}
+
+export function clientFromStored(row: StoredMpesaConfig, mockState?: Map<string, MockEntry>) {
+  return new DarajaClient(configFromStored(row), businessFetch ?? undefined, undefined, mockState)
+}
+
+// One client per business, rebuilt whenever its settings change. The OAuth
+// token lives on the client, so it is cached per business, mode and
+// credentials: new keys (or a new mode) never reuse an old token.
+const businessClients = new Map<string, { print: string; client: DarajaClient }>()
+// Which client sent each checkout, so it is asked about with the same settings.
+// 'env' stands for the server wide client, whichever instance that is now.
+const startedWith = new Map<string, DarajaClient | 'env'>()
+
+export function resetDarajaCache() {
+  businessClients.clear()
+  startedWith.clear()
+}
+
+const fingerprint = (r: StoredMpesaConfig) =>
+  JSON.stringify([r.mode, r.shortcode, r.partyB, r.transactionType, r.consumerKeyEnc, r.consumerSecretEnc, r.passkeyEnc])
+
+// The client for one business: its own enabled settings win, otherwise the
+// server wide settings apply exactly as before.
+export async function darajaFor(businessId: string): Promise<DarajaClient> {
+  const row = await prisma.mpesaConfig.findUnique({ where: { businessId } })
+  if (!row || !row.enabled) {
+    businessClients.delete(businessId)
+    return getDaraja()
+  }
+  const print = fingerprint(row)
+  const cached = businessClients.get(businessId)
+  if (cached && cached.print === print) return cached.client
+  // waiting mock checkouts survive a settings change
+  const made = clientFromStored(row, cached?.client.mockState)
+  businessClients.set(businessId, { print, client: made })
+  return made
+}
+
+export async function darajaForBranch(branchId: string) {
+  const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { businessId: true } })
+  if (!branch) throw misconfigured()
+  return darajaFor(branch.businessId)
+}
+
+export function rememberCheckout(checkoutRequestId: string, c: DarajaClient) {
+  // bounded: old entries fall back to the business settings
+  if (startedWith.size >= 5000) {
+    const oldest = startedWith.keys().next().value
+    if (oldest !== undefined) startedWith.delete(oldest)
+  }
+  startedWith.set(checkoutRequestId, c === client ? 'env' : c)
+}
+
+// The client that sent this checkout when we still know it (same process),
+// otherwise the current client of the branch's business.
+export async function darajaForCheckout(checkoutRequestId: string, branchId: string) {
+  const known = startedWith.get(checkoutRequestId)
+  if (known) return known === 'env' ? getDaraja() : known
+  return darajaForBranch(branchId)
+}
+
+// Mock mode: finds the planned answer whichever mock client holds it.
+export function findMockEntry(checkoutRequestId: string): MockEntry | undefined {
+  const sender = startedWith.get(checkoutRequestId)
+  const known = sender && sender !== 'env' ? sender.mockState.get(checkoutRequestId) : undefined
+  if (known) return known
+  const global = getDaraja().mockState.get(checkoutRequestId)
+  if (global) return global
+  for (const { client: c } of businessClients.values()) {
+    const e = c.mockState.get(checkoutRequestId)
+    if (e) return e
+  }
+  return undefined
 }

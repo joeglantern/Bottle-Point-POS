@@ -544,6 +544,18 @@ describe('receipt', () => {
     expect(rc.payments.map((p: any) => p.method)).toEqual(['CASH', 'MPESA'])
     expect(rc.payments[1].mpesaRef).toBe('JJJ9999999')
     expect(rc.payments[0].changeCents).toBe(14000)
+    // the shop's own details and the VAT held in the total (16% by default)
+    expect(rc.business).toEqual({
+      name: 'Test Wines',
+      legalName: null,
+      address: null,
+      phone: null,
+      email: null,
+      kraPin: null,
+      receiptFooter: null,
+      vatRateBps: 1600
+    })
+    expect(rc.vatCents).toBe(73931)
   })
 
   it('only for paid or refunded sales, and only in your branch', async () => {
