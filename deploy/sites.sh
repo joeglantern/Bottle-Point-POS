@@ -6,6 +6,11 @@
 #
 #   ssh kiptoo 'bash ~/apps/bottle-point/sites.sh'
 #
+# With --if-changed it does nothing unless the list of client addresses has
+# changed since the last run. deploy.sh installs a once a minute systemd user
+# timer that runs it that way, so a client onboarded in the console gets its
+# certificate within about a minute with no one touching the server.
+#
 # It only ever writes its own file (bottle-point.caddy). If Caddy says the
 # new config is invalid the file is removed again and Caddy keeps running
 # exactly as before, so a mistake here cannot take the other sites down.
@@ -21,6 +26,11 @@ source ./.env
 slugs="$(docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT slug FROM \"Business\" WHERE slug IS NOT NULL ORDER BY slug"' </dev/null | tr -d '\r' | grep -E '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$' || true)"
 pos_hosts="$DOMAIN"
 for s in $slugs; do pos_hosts="$pos_hosts, $s.$DOMAIN"; done
+
+state=.sites-state
+if [ "${1:-}" = "--if-changed" ] && [ -f "$state" ] && [ "$(cat "$state")" = "$pos_hosts" ]; then
+  exit 0
+fi
 
 target="$CADDY_CONF_DIR/bottle-point.caddy"
 backup="$(mktemp)"
@@ -57,7 +67,8 @@ chmod 644 "$target"
 
 if docker exec "$CADDY_CONTAINER" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/tmp/bp-caddy.log 2>&1; then
   docker exec "$CADDY_CONTAINER" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
-  echo "Caddy serves: $pos_hosts, console.$DOMAIN"
+  printf '%s' "$pos_hosts" > "$state"
+  echo "$(date -Is) Caddy serves: $pos_hosts, console.$DOMAIN"
 else
   echo "Caddy rejected the Bottle Point site file. Restoring the previous one; nothing else changed."
   tail -5 /tmp/bp-caddy.log

@@ -154,7 +154,39 @@ done
 docker compose exec -T web nginx -s reload </dev/null >/dev/null 2>&1 || true
 docker compose exec -T console nginx -s reload </dev/null >/dev/null 2>&1 || true
 
-if [ -n "$DOMAIN" ]; then bash ./sites.sh </dev/null; fi
+if [ -n "$DOMAIN" ]; then
+  bash ./sites.sh </dev/null
+  # pick up newly onboarded clients within a minute: a systemd timer under
+  # this user (lingering, so it runs while nobody is logged in)
+  mkdir -p ~/.config/systemd/user
+  cat > ~/.config/systemd/user/bottle-point-sites.service <<'UNIT'
+[Unit]
+Description=Bottle Point: give newly onboarded client addresses an HTTPS site in Caddy
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/apps/bottle-point
+ExecStart=/bin/bash %h/apps/bottle-point/sites.sh --if-changed
+UNIT
+  cat > ~/.config/systemd/user/bottle-point-sites.timer <<'UNIT'
+[Unit]
+Description=Check for new Bottle Point clients every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+UNIT
+  export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+  if loginctl show-user "$(id -un)" -p Linger 2>/dev/null | grep -q yes; then
+    systemctl --user daemon-reload && systemctl --user enable --now bottle-point-sites.timer >/dev/null
+  else
+    echo "Note: new client addresses need: loginctl enable-linger $(id -un), or run sites.sh after onboarding."
+  fi
+fi
 docker compose ps --format '{{.Service}} {{.Status}} {{.Ports}}' </dev/null
 REMOTE
 
