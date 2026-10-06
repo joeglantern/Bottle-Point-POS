@@ -22,7 +22,15 @@ export default function Login({ themeBtn }) {
   useEffect(() => {
     api.get('/session/tenant').then(
       r => setShop({ loading: false, name: r.tenant?.name ?? null, missing: false }),
-      e => setShop({ loading: false, name: null, missing: e.code === 'no_shop' })
+      e => {
+        // the shop changed its address: go there, keeping the path
+        if (e.code === 'shop_moved' && e.details?.url) {
+          setShop({ loading: true, name: null, missing: false, moved: e.details })
+          window.location.replace(e.details.url + window.location.pathname + window.location.search)
+          return
+        }
+        setShop({ loading: false, name: null, missing: e.code === 'no_shop' })
+      }
     )
   }, [])
 
@@ -71,6 +79,18 @@ export default function Login({ themeBtn }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  if (shop.moved) {
+    return (
+      <div className="login login-missing">
+        <div className="login-card">
+          <Logo className="logo" />
+          <h2>{shop.moved.name} has moved</h2>
+          <p className="muted">Taking you to <a href={shop.moved.url}>{shop.moved.url.replace('https://', '')}</a>. Update your bookmark or home screen icon.</p>
+        </div>
+      </div>
+    )
+  }
 
   if (shop.missing) {
     return (

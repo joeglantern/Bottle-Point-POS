@@ -6,7 +6,8 @@ import { AppError, unauthorized } from '../lib/errors.js'
 import { body } from '../lib/validate.js'
 import { audit } from '../lib/audit.js'
 import { requireAuth, type AppEnv } from '../middleware/auth.js'
-import { tenantMode, tenantOf } from '../lib/tenant.js'
+import { movedTenantFromHeaders, tenantMode, tenantOf } from '../lib/tenant.js'
+import { env } from '../env.js'
 
 const MAX_TRIES = 5
 const LOCK_MINUTES = 5
@@ -89,6 +90,13 @@ sessionRoutes.get('/me', requireAuth, async c => {
 sessionRoutes.get('/tenant', async c => {
   if (!tenantMode()) return c.json({ tenant: null, tenantMode: false })
   const tenant = await tenantOf(c)
-  if (!tenant) throw new AppError(404, 'no_shop', 'There is no shop at this address.')
+  if (!tenant) {
+    // the shop changed its address: tell the page where it went
+    const moved = await movedTenantFromHeaders(c.req.raw.headers)
+    if (moved) {
+      throw new AppError(404, 'shop_moved', `${moved.name} has moved to a new address.`, { url: `https://${moved.slug}.${env.TENANT_BASE_DOMAIN}`, name: moved.name })
+    }
+    throw new AppError(404, 'no_shop', 'There is no shop at this address.')
+  }
   return c.json({ tenant: { name: tenant.name, slug: tenant.slug }, tenantMode: true })
 })

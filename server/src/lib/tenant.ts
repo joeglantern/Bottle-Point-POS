@@ -56,6 +56,14 @@ export async function tenantFromHeaders(headers: Headers): Promise<Tenant | null
 
 export const tenantOf = (c: Context) => tenantFromHeaders(c.req.raw.headers)
 
+// A client that used to live at this address, for forwarding.
+export async function movedTenantFromHeaders(headers: Headers): Promise<Tenant | null> {
+  const slug = slugFromHost(hostOf(headers))
+  if (!slug) return null
+  const b = await prisma.business.findFirst({ where: { formerSlugs: { has: slug }, slug: { not: null } }, select: { id: true, name: true, slug: true } })
+  return b ? { id: b.id, name: b.name, slug: b.slug! } : null
+}
+
 // Call after a slug or name changes so the next request sees it.
 export function forgetTenant(slug?: string | null) {
   if (slug) cache.delete(slug)

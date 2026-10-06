@@ -38,6 +38,8 @@ The next screen shows the owner's PIN **once**. Copy it and send it to the owner
 - **Notes:** internal notes. The client never sees them.
 - **Activity:** everything that happened to this client, by them and by us.
 
+**Changing a client's name or web address:** Overview, Business details, **Edit**. Anyone in Support can change the name. Only super admins can change the **web address**, because it moves the shop: the new address gets its certificate and goes live within about a minute, and the old address forwards everyone to the new one, so bookmarks and home screen icons keep working. Staff stay signed in on the new address after one sign in there. A former address can be given to another client later; the live client always wins.
+
 **Suspend** (top right) stops every till at once. Staff can still sign in and see why: the reason you type is shown to them. **Reactivate** brings them back (as past due if they still have an overdue invoice).
 
 ## Plans

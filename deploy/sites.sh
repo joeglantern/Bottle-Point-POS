@@ -22,8 +22,9 @@ source ./.env
 : "${CADDY_CONF_DIR:?CADDY_CONF_DIR is not set}"
 : "${CADDY_CONTAINER:?CADDY_CONTAINER is not set}"
 
-# every client address that exists in the database
-slugs="$(docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT slug FROM \"Business\" WHERE slug IS NOT NULL ORDER BY slug"' </dev/null | tr -d '\r' | grep -E '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$' || true)"
+# every client address in the database, plus former ones (they forward to
+# the new address, so they still need a certificate)
+slugs="$(docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT slug FROM \"Business\" WHERE slug IS NOT NULL UNION SELECT unnest(\"formerSlugs\") FROM \"Business\" ORDER BY 1"' </dev/null | tr -d '\r' | grep -E '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$' || true)"
 pos_hosts="$DOMAIN"
 for s in $slugs; do pos_hosts="$pos_hosts, $s.$DOMAIN"; done
 

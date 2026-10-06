@@ -123,6 +123,7 @@ To switch the server-wide fallback from simulation to a real account, set `MPESA
 | Symptom | Check |
 |---|---|
 | A client address shows a certificate error | Is the client in the console with that exact address? `tail sites.log`, then run `sites.sh` by hand and read its message. |
+| A client's address was changed | The old address keeps a certificate and forwards to the new one (former addresses are listed with the current ones in `bottle-point.caddy`). |
 | "No shop here" on a client address | The address in the console does not match the link. The address is the client's web name, lowercase. |
 | Staff say "Wrong username or PIN" but the details are right | They may be on another client's address, or locked after 5 wrong PINs (5 minutes; the owner or the console can reset the PIN). |
 | Everything shows "Selling is paused" | The client is suspended or cancelled. See the client in the console. |

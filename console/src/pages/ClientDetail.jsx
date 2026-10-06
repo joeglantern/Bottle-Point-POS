@@ -557,22 +557,37 @@ function ResumeDialog({ t, onClose, onDone }) {
   )
 }
 
+const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/
+const BASE = import.meta.env.VITE_TENANT_BASE_DOMAIN || 'pos.flarehub.co.ke'
+
 function EditDialog({ t, onClose, onDone }) {
-  const [f, setF] = useState({ name: t.name, legalName: t.legalName ?? '', email: t.email ?? '', phone: t.phone ?? '', address: t.address ?? '', kraPin: t.kraPin ?? '' })
+  const { user } = useSession()
+  const superAdmin = user.role === 'SUPER_ADMIN'
+  const [f, setF] = useState({ slug: t.slug ?? '', name: t.name, legalName: t.legalName ?? '', email: t.email ?? '', phone: t.phone ?? '', address: t.address ?? '', kraPin: t.kraPin ?? '' })
   const [run, busy, error] = useAction()
   const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
   const fe = error?.fields ?? {}
   const kraBad = f.kraPin && !/^[A-Za-z]\d{9}[A-Za-z]$/.test(f.kraPin.trim())
+  const moving = superAdmin && f.slug !== (t.slug ?? '')
+  const slugBad = moving && !SLUG.test(f.slug)
   const go = async e => {
     e.preventDefault()
-    if (f.name.trim().length < 2 || kraBad) return
-    const r = await run(() => api.updateTenant(t.id, { ...f, kraPin: f.kraPin.trim().toUpperCase() }), 'Details saved')
+    if (f.name.trim().length < 2 || kraBad || slugBad) return
+    const { slug, ...rest } = f
+    const body = { ...rest, kraPin: f.kraPin.trim().toUpperCase(), ...(moving ? { slug } : {}) }
+    const r = await run(() => api.updateTenant(t.id, body), moving ? `Saved. The new address is live within a minute.` : 'Details saved')
     if (r) onDone()
   }
   return (
     <Dialog title="Business details" onClose={onClose} busy={busy}
       footer={<><Button onClick={onClose} disabled={busy}>Cancel</Button><Button kind="primary" type="submit" form="cx-edit-client" busy={busy}>Save</Button></>}>
       <form id="cx-edit-client" onSubmit={go} noValidate className="cx-form-grid">
+        {superAdmin && (
+          <Field label="Web address" className="cx-span-2" error={fe.slug ?? (slugBad ? '3 to 40 lowercase letters, digits or dashes' : null)}
+            hint={moving && !slugBad ? `New address: ${f.slug}.${BASE}. The old one forwards to it, so bookmarks keep working.` : `${f.slug || 'name'}.${BASE}`}>
+            <input className="cx-input cx-num" value={f.slug} onChange={e => setF(x => ({ ...x, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40) }))} autoCapitalize="none" spellCheck={false} />
+          </Field>
+        )}
         <Field label="Name" error={fe.name ?? (f.name.trim().length < 2 ? 'At least 2 characters' : null)}><input className="cx-input" value={f.name} onChange={set('name')} /></Field>
         <Field label="Legal name" error={fe.legalName}><input className="cx-input" value={f.legalName} onChange={set('legalName')} /></Field>
         <Field label="Email" error={fe.email}><input className="cx-input" type="email" value={f.email} onChange={set('email')} /></Field>

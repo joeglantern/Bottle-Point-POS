@@ -434,7 +434,11 @@ tenantRoutes.patch('/tenants/:id', care, async c => {
       const old = (before as Record<string, unknown>)[k]
       if (v !== undefined && old !== v) changed[k] = { from: old, to: v }
     }
-    const after = await tx.business.update({ where: { id: businessId }, data: input })
+    const moving = input.slug !== undefined && input.slug !== before.slug
+    const formerSlugs = moving
+      ? [...new Set([...(before.formerSlugs ?? []), ...(before.slug ? [before.slug] : [])])].filter(s => s !== input.slug)
+      : undefined
+    const after = await tx.business.update({ where: { id: businessId }, data: { ...input, ...(formerSlugs ? { formerSlugs } : {}) } })
     await platformAudit(tx, platform, 'console.tenant.updated', 'Business', businessId, { businessName: after.name, changed }, businessId)
     return after
   })

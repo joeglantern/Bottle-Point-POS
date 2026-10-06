@@ -103,3 +103,65 @@ describe('one address per client', () => {
     await expect(prisma.business.update({ where: { id: fx.business.id }, data: { slug: '-dash' } })).rejects.toThrow()
   })
 })
+
+describe('changing a client address', () => {
+  it('moves the shop, forwards the old address and keeps sessions working on the new one', async () => {
+    const { seedPlatform, consoleLogin } = await import('./helpers.js')
+    await seedPlatform()
+    const admin = await consoleLogin('admin@bottlepoint.test')
+    const support = await consoleLogin('support@bottlepoint.test')
+
+    // only super admins move an address
+    const denied = await support.patch(`/api/console/tenants/${fx.business.id}`, { slug: 'nayotix' })
+    expect(denied.status).toBe(403)
+
+    const r = await admin.patch(`/api/console/tenants/${fx.business.id}`, { slug: 'nayotix', name: 'Nayotix' })
+    expect(r.status).toBe(200)
+    expect(r.body.tenant.slug).toBe('nayotix')
+
+    // the new address is the shop now
+    const here = await get(host('nayotix'), '/api/session/tenant')
+    expect((await here.json()).tenant).toEqual({ name: 'Nayotix', slug: 'nayotix' })
+    expect((await signIn(host('nayotix'), 'cashier')).status).toBe(200)
+
+    // the old address tells the page where to go, and nobody can sign in there
+    const old = await get(host('nyrolix'), '/api/session/tenant')
+    expect(old.status).toBe(404)
+    const body = await old.json()
+    expect(body.error.code).toBe('shop_moved')
+    expect(body.error.details.url).toBe(`https://nayotix.${BASE}`)
+    expect((await signIn(host('nyrolix'), 'cashier')).status).toBe(404)
+
+    // moving again keeps every earlier address
+    await admin.patch(`/api/console/tenants/${fx.business.id}`, { slug: 'nayotix-wines' })
+    const b = await prisma.business.findUniqueOrThrow({ where: { id: fx.business.id } })
+    expect(b.formerSlugs.sort()).toEqual(['nayotix', 'nyrolix'])
+    expect((await (await get(host('nyrolix'), '/api/session/tenant')).json()).error.details.url).toBe(`https://nayotix-wines.${BASE}`)
+
+    // moving back to a former address takes it off the former list
+    await admin.patch(`/api/console/tenants/${fx.business.id}`, { slug: 'nyrolix' })
+    const back = await prisma.business.findUniqueOrThrow({ where: { id: fx.business.id } })
+    expect(back.formerSlugs.sort()).toEqual(['nayotix', 'nayotix-wines'])
+  })
+
+  it('a live shop always wins over someone else\'s former address', async () => {
+    const { seedPlatform, consoleLogin } = await import('./helpers.js')
+    await seedPlatform()
+    const admin = await consoleLogin('admin@bottlepoint.test')
+    await admin.patch(`/api/console/tenants/${fx.business.id}`, { slug: 'nayotix' })
+    // another client is now given the old name
+    const other = await prisma.business.findFirstOrThrow({ where: { slug: 'othershop' } })
+    expect((await admin.patch(`/api/console/tenants/${other.id}`, { slug: 'nyrolix' })).status).toBe(200)
+    const t = await get(host('nyrolix'), '/api/session/tenant')
+    expect((await t.json()).tenant.name).toBe('Other Shop')
+  })
+
+  it('cannot take an address another client is using', async () => {
+    const { seedPlatform, consoleLogin } = await import('./helpers.js')
+    await seedPlatform()
+    const admin = await consoleLogin('admin@bottlepoint.test')
+    const r = await admin.patch(`/api/console/tenants/${fx.business.id}`, { slug: 'othershop' })
+    expect(r.status).toBe(409)
+    expect(r.body.error.code).toBe('duplicate_slug')
+  })
+})
