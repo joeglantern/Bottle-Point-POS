@@ -22,3 +22,29 @@ export async function audit(
     }
   })
 }
+
+// Something a console user (or the platform itself, when `platform` is null)
+// did. `businessId` is the client it was done to, if any, so it also shows up
+// when looking at that client's history. Actions start with "console." or
+// "billing." by convention.
+export async function platformAudit(
+  db: Db,
+  platform: { id: string } | null,
+  action: string,
+  entity: string,
+  entityId: string | null,
+  data?: Record<string, unknown>,
+  businessId?: string | null
+) {
+  await db.auditLog.create({
+    data: {
+      userId: platform?.id ?? null,
+      businessId: businessId ?? null,
+      branchId: null,
+      action,
+      entity,
+      entityId,
+      data: (data ?? undefined) as never
+    }
+  })
+}

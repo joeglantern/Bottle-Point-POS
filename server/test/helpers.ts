@@ -1,6 +1,6 @@
 import { createApp } from '../src/app.js'
 import { prisma } from '../src/db.js'
-import { createStaff } from '../src/lib/users.js'
+import { createPlatformUser, createStaff } from '../src/lib/users.js'
 
 export const app = createApp()
 export const ORIGIN = 'http://localhost:5173'
@@ -99,4 +99,28 @@ export class Client {
   del<T = any>(p: string) {
     return this.req<T>('DELETE', p)
   }
+}
+
+export const CONSOLE_PASSWORD = 'correct-horse-battery'
+
+// One console user per platform role.
+export async function seedPlatform() {
+  const mk = (name: string, role: 'SUPER_ADMIN' | 'SUPPORT' | 'BILLING') =>
+    createPlatformUser(prisma, { name, email: `${name}@bottlepoint.test`, password: CONSOLE_PASSWORD, role })
+  return { admin: await mk('admin', 'SUPER_ADMIN'), support: await mk('support', 'SUPPORT'), billing: await mk('billing', 'BILLING') }
+}
+
+// A signed in console client. Same request helpers as Client.
+export async function consoleLogin(email: string, password = CONSOLE_PASSWORD) {
+  const res = await app.request('/api/console/session/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: ORIGIN },
+    body: JSON.stringify({ email, password })
+  })
+  if (res.status !== 200) throw new Error(`console login ${email} failed: ${res.status} ${await res.text()}`)
+  const cookie = res.headers
+    .getSetCookie()
+    .map(c => c.split(';')[0])
+    .join('; ')
+  return new Client(cookie)
 }

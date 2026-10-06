@@ -1,7 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { auth } from '../auth.js'
-import { prisma, type Role } from '../db.js'
-import { forbidden, unauthorized } from '../lib/errors.js'
+import { prisma, type Role, type SubscriptionStatus } from '../db.js'
+import { forbidden, paymentRequired, unauthorized } from '../lib/errors.js'
 
 export type Actor = {
   id: string
@@ -11,6 +11,8 @@ export type Actor = {
   businessId: string
   // branches this person may act in. Owners get every branch of the business.
   branchIds: string[]
+  // null when the business has no subscription record (treated as active)
+  subscriptionStatus: SubscriptionStatus | null
 }
 
 export type AppEnv = { Variables: { actor: Actor } }
@@ -21,7 +23,7 @@ export const atLeast = (actor: Actor, role: Role) => RANK[actor.role] >= RANK[ro
 export async function loadActor(userId: string): Promise<Actor | null> {
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    include: { branches: true }
+    include: { branches: true, business: { select: { subscription: { select: { status: true } } } } }
   })
   if (!u || !u.active || !u.businessId) return null
   let branchIds = u.branches.map(b => b.branchId)
@@ -35,7 +37,8 @@ export async function loadActor(userId: string): Promise<Actor | null> {
     username: u.username ?? '',
     role: u.role,
     businessId: u.businessId,
-    branchIds
+    branchIds,
+    subscriptionStatus: u.business?.subscription?.status ?? null
   }
 }
 
@@ -78,4 +81,20 @@ export function branchFor(c: Context<AppEnv>, explicit?: string | null): string 
 
 export function assertBranch(actor: Actor, branchId: string) {
   if (!actor.branchIds.includes(branchId)) throw forbidden('You do not have access to this branch.')
+}
+
+// A suspended or cancelled client can still sign in, see why, and reach its
+// billing pages, but nothing else. Mounted on the whole client API; the paths
+// under /api/admin/billing are let through.
+export const requireActiveSubscription: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const status = c.get('actor').subscriptionStatus
+  if ((status === 'SUSPENDED' || status === 'CANCELLED') && !c.req.path.startsWith('/api/admin/billing')) {
+    throw paymentRequired(
+      status === 'SUSPENDED'
+        ? 'This account is suspended. Ask the owner to settle the outstanding invoice or contact Bottle Point support.'
+        : 'This subscription has ended. Contact Bottle Point support to reactivate it.',
+      status === 'SUSPENDED' ? 'subscription_suspended' : 'subscription_cancelled'
+    )
+  }
+  await next()
 }

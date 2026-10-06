@@ -6,7 +6,7 @@ import { auth } from './auth.js'
 import { prisma, Prisma } from './db.js'
 import { trustedOrigins } from './env.js'
 import { AppError } from './lib/errors.js'
-import { requireAuth, type AppEnv } from './middleware/auth.js'
+import { requireActiveSubscription, requireAuth, type AppEnv } from './middleware/auth.js'
 import { sessionRoutes } from './routes/session.js'
 import { salesRoutes } from './routes/sales.js'
 import { mpesaRoutes, mpesaCallbackRoutes } from './routes/mpesa.js'
@@ -17,6 +17,8 @@ import { productRoutes } from './routes/products.js'
 import { stockRoutes } from './routes/stock.js'
 import { customerRoutes } from './routes/customers.js'
 import { adminRoutes } from './routes/admin.js'
+import { settingsRoutes } from './routes/settings.js'
+import { consoleRoutes } from './routes/console/index.js'
 
 export function createApp() {
   const app = new Hono<AppEnv>()
@@ -54,8 +56,11 @@ export function createApp() {
   // token in the URL and by matching the request we sent.
   app.route('/api/mpesa/callback', mpesaCallbackRoutes)
 
+  // The company console: platform staff only, separate sign in.
+  app.route('/api/console', consoleRoutes)
+
   const api = new Hono<AppEnv>()
-  api.use('*', requireAuth)
+  api.use('*', requireAuth, requireActiveSubscription)
   api.route('/sales', salesRoutes)
   api.route('/mpesa', mpesaRoutes)
   api.route('/shifts', shiftRoutes)
@@ -65,6 +70,7 @@ export function createApp() {
   api.route('/stock', stockRoutes)
   api.route('/customers', customerRoutes)
   api.route('/admin', adminRoutes)
+  api.route('/admin', settingsRoutes)
   app.route('/api', api)
 
   app.notFound(c => c.json({ error: { code: 'not_found', message: 'Not found.' } }, 404))

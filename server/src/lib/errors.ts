@@ -1,6 +1,6 @@
 export class AppError extends Error {
   constructor(
-    public status: 400 | 401 | 403 | 404 | 409 | 422 | 423 | 429 | 500 | 502,
+    public status: 400 | 401 | 402 | 403 | 404 | 409 | 422 | 423 | 429 | 500 | 502,
     public code: string,
     message: string,
     public details?: unknown
@@ -15,3 +15,6 @@ export const forbidden = (msg = 'You do not have access to this.') => new AppErr
 export const notFound = (what = 'Item') => new AppError(404, 'not_found', `${what} not found.`)
 export const conflict = (msg: string, code = 'conflict') => new AppError(409, code, msg)
 export const unprocessable = (msg: string, code = 'invalid_state') => new AppError(422, code, msg)
+
+// The client's subscription or plan does not allow this.
+export const paymentRequired = (msg: string, code = 'subscription_inactive', details?: unknown) => new AppError(402, code, msg, details)

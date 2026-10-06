@@ -8,6 +8,11 @@ const schema = z.object({
   BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be at least 32 characters'),
   BETTER_AUTH_URL: z.string().url(),
   TRUSTED_ORIGINS: z.string().default('http://localhost:5173'),
+  // Encrypts client secrets at rest (their M-Pesa keys). Falls back to a key
+  // derived from BETTER_AUTH_SECRET. Changing either makes stored secrets unreadable.
+  SECRETS_KEY: z.string().min(32).optional(),
+  // VAT charged on the platform's own invoices to clients, in basis points
+  PLATFORM_VAT_BPS: z.coerce.number().int().min(0).max(5000).default(1600),
   // Secure cookies need HTTPS. Defaults to on in production; set false only
   // while a server is reached over plain HTTP (no domain yet).
   COOKIE_SECURE: z.enum(['true', 'false']).optional(),

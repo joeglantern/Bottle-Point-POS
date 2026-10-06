@@ -72,13 +72,223 @@ enum StockReason {
 // ---------- Business and branches ----------
 
 model Business {
-  id        String     @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
-  createdAt DateTime   @default(now())
-  branches  Branch[]
-  users     User[]
-  products  Product[]
-  customers Customer[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // shown on receipts and invoices, edited by the owner in Admin
+  legalName     String?
+  email         String?
+  phone         String?
+  address       String?
+  kraPin        String?
+  receiptFooter String?
+  // VAT in basis points: 1600 = 16%
+  vatRateBps    Int     @default(1600)
+  currency      String  @default("KES")
+
+  branches     Branch[]
+  users        User[]
+  products     Product[]
+  customers    Customer[]
+  mpesaConfig  MpesaConfig?
+  subscription Subscription?
+  invoices     Invoice[]
+  notes        TenantNote[]
+}
+
+// ---------- Per business M-Pesa (each shop has its own Paybill or Till) ----------
+
+enum MpesaMode {
+  MOCK
+  SANDBOX
+  PRODUCTION
+}
+
+model MpesaConfig {
+  businessId        String    @id
+  enabled           Boolean   @default(false)
+  mode              MpesaMode @default(MOCK)
+  shortcode         String?
+  // Buy Goods uses the till number as PartyB; Paybill uses the shortcode
+  partyB            String?
+  transactionType   String    @default("CustomerPayBillOnline")
+  // secrets are stored encrypted (see lib/secrets.ts), never returned by the API
+  consumerKeyEnc    String?
+  consumerSecretEnc String?
+  passkeyEnc        String?
+  updatedById       String?
+  updatedAt         DateTime  @default(now()) @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Platform (the company running Bottle Point as a service) ----------
+
+enum PlatformRole {
+  SUPER_ADMIN
+  SUPPORT
+  BILLING
+}
+
+enum PricingModel {
+  FLAT
+  PER_BRANCH
+  PERCENT_OF_SALES
+  ONE_TIME
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
+  ONCE
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+}
+
+enum InvoicePayMethod {
+  MPESA
+  BANK
+  CARD
+  CASH
+  OTHER
+}
+
+model Plan {
+  id             String          @id @default(cuid())
+  code           String          @unique
+  name           String
+  description    String?
+  model          PricingModel
+  interval       BillingInterval @default(MONTH)
+  // FLAT and ONE_TIME: the price. PER_BRANCH: the base fee.
+  priceCents     Int             @default(0)
+  // PER_BRANCH: added for each active branch
+  perBranchCents Int             @default(0)
+  // PERCENT_OF_SALES: share of paid sales in basis points (150 = 1.5%)
+  percentBps     Int             @default(0)
+  // PERCENT_OF_SALES: floor per period
+  minimumCents   Int             @default(0)
+  trialDays      Int             @default(14)
+  // null means unlimited
+  maxBranches    Int?
+  maxStaff       Int?
+  maxProducts    Int?
+  // feature switches, for example { "mpesaStk": true, "exports": true }
+  features       Json            @default("{}")
+  active         Boolean         @default(true)
+  // public plans can be offered to anyone; private ones are negotiated deals
+  public         Boolean         @default(true)
+  sortOrder      Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @default(now()) @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  businessId         String             @unique
+  planId             String
+  status             SubscriptionStatus @default(TRIALING)
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean            @default(false)
+  cancelledAt        DateTime?
+  // negotiated deals
+  discountBps        Int                @default(0)
+  customPriceCents   Int?
+  suspendedReason    String?
+  suspendedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @default(now()) @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id])
+  invoices Invoice[]
+
+  @@index([status])
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  // human readable, for example INV-2026-000123
+  number         String        @unique
+  businessId     String
+  subscriptionId String?
+  periodStart    DateTime
+  periodEnd      DateTime
+  // [{ description, quantity, unitCents, amountCents }]
+  lines          Json
+  subtotalCents  Int
+  taxCents       Int
+  totalCents     Int
+  paidCents      Int           @default(0)
+  status         InvoiceStatus @default(OPEN)
+  issuedAt       DateTime      @default(now())
+  dueAt          DateTime
+  paidAt         DateTime?
+  voidedAt       DateTime?
+  notes          String?
+  createdAt      DateTime      @default(now())
+
+  business     Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subscription Subscription?    @relation(fields: [subscriptionId], references: [id])
+  payments     InvoicePayment[]
+
+  // one invoice per subscription period, so a billing run can be repeated safely
+  @@unique([subscriptionId, periodStart])
+  @@index([businessId, issuedAt])
+  @@index([status, dueAt])
+}
+
+model InvoicePayment {
+  id           String           @id @default(cuid())
+  invoiceId    String
+  amountCents  Int
+  method       InvoicePayMethod
+  reference    String?
+  receivedAt   DateTime
+  recordedById String
+  createdAt    DateTime         @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+// Internal notes the platform team keeps about a client. Never shown to the client.
+model TenantNote {
+  id         String   @id @default(cuid())
+  businessId String
+  authorId   String
+  body       String
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+}
+
+// Invoice numbers per year, incremented atomically.
+model InvoiceCounter {
+  year Int @id
+  last Int @default(0)
 }
 
 model Branch {
@@ -116,6 +326,8 @@ model User {
 
   // Bottle Point fields
   businessId    String?
+  // set only for staff of the company running the platform (console users)
+  platformRole  PlatformRole?
   role          Role      @default(CASHIER)
   active        Boolean   @default(true)
   failedPins    Int       @default(0)

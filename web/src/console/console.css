@@ -1,0 +1,4 @@
+/* Company console styles. Every class is prefixed cx- so nothing here can
+   leak into the till, and nothing in styles.css is relied on except the
+   colour and font tokens on :root. */
+.cx-boot { padding: 24px; }
