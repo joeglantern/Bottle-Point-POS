@@ -8,6 +8,10 @@ A sale is saved the moment it is recorded, and only counts as paid once a cashie
 
 Production: every client has its own address, `<name>.pos.flarehub.co.ke` (for example https://nyrolix.pos.flarehub.co.ke). The company console is at https://console.pos.flarehub.co.ke.
 
+## Documentation
+
+Start at [docs/README.md](docs/README.md): the [shop guide](docs/shop-guide.md), [scanners and printers](docs/hardware.md), the [console guide](docs/console-guide.md), [operations](docs/operations.md), [architecture](docs/architecture.md), [security](docs/security.md) and the [API reference](server/docs/api/README.md).
+
 ## What is here
 
 - `web/` the till, manager and owner screens (Vite, React). Works with USB and Bluetooth barcode scanners.

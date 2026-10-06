@@ -97,10 +97,14 @@ async function go(label, vp = cur) {
   return press(label, '.more-item')
 }
 
+const USERNAMES = { 'Wanjiru K.': 'wanjiru', 'Otieno J.': 'otieno', 'Achieng O.': 'achieng' }
 async function signIn(name, vp = cur) {
-  await press(name, '.user-pill')
+  if (await page.$('.login-clear')) { await press('Not you?', '.login-clear'); await sleep(150) }
+  const input = await page.$('.login-card input.label-in')
+  await input.type(USERNAMES[name])
   for (const d of '1234') { await press(d, '.pad button'); await sleep(40) }
-  await sleep(1200)
+  await press('Sign in', '.pad button')
+  await sleep(1400)
   if (await hasText('Opening float') || await hasText('Open your shift') || await page.$('.open-shift, .shift-open') ) {
     await audit('open-shift')
     if (!(await press('Open shift'))) await press('Not now')
@@ -158,11 +162,15 @@ async function tour(vp = cur) {
     check(await press('Receive delivery') && await waitText('Choose a product', 3000), tag + ' receive dialog opens'); await audit('inventory-receive'); await closeDialog()
     if (await press('Add product')) { await audit('inventory-product'); await closeDialog() }
     await go('Today'); await sleep(900); await audit('today')
-    await page.evaluate(() => document.querySelector('main').scrollTo(0, 1e5)); await audit('today-bottom')
+    await page.evaluate(() => document.querySelector('main')?.scrollTo(0, 1e5)); await audit('today-bottom')
     await go('Staff'); await sleep(600); await audit('staff')
     if (await press('Add staff')) { await audit('staff-add'); await closeDialog() }
   }
-  if (role === 'owner') { await go('Branches'); await sleep(700); await audit('branches') }
+  if (role === 'owner') {
+    await go('Branches'); await sleep(700); await audit('branches')
+    await go('Settings'); await sleep(800); await audit('settings-business')
+    for (const t of ['M-Pesa', 'Billing', 'Devices', 'Activity', 'Exports']) { await press(t, '.admin-tabs button'); await sleep(700); await audit('settings-' + t.toLowerCase().replace(/\W/g, '')) }
+  }
 }
 
 let cur, theme, role

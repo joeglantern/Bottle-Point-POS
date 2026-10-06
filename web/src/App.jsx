@@ -10,6 +10,7 @@ import Customers from './pages/Customers.jsx'
 import Inventory from './pages/Inventory.jsx'
 import Today from './pages/Today.jsx'
 import { Branches, Staff } from './pages/Owner.jsx'
+import Admin, { BillingBanner, SuspendedScreen } from './pages/Admin.jsx'
 
 export default function App() {
   const [theme, toggleTheme] = useTheme()
@@ -31,6 +32,17 @@ function Shell({ themeBtn }) {
   const [openingShift, setOpeningShift] = useState(false)
   const [attach, setAttach] = useState(null)
   const [moreOpen, setMoreOpen] = useState(false)
+  // subscription state: a strip for trials ending and overdue invoices, and
+  // a full stop when the account is suspended or cancelled
+  const billing = useApi('/admin/billing/status')
+  const [blocked, setBlocked] = useState(null)
+  useEffect(() => {
+    const on = e => setBlocked(e.detail.message)
+    window.addEventListener('bp:subscription', on)
+    return () => window.removeEventListener('bp:subscription', on)
+  }, [])
+  const st = billing.data?.status
+  const stopped = st === 'SUSPENDED' || st === 'CANCELLED' || !!blocked
 
   const loadShift = () => api.get('/shifts/current').then(r => setShift(r.shift), () => setShift(null))
   useEffect(() => {
@@ -52,7 +64,7 @@ function Shell({ themeBtn }) {
     ['customers', 'Customers', 'customers']
   ]
   if (isManager) tabs.push(['stock', 'Inventory', 'stock'], ['today', 'Today', 'today'], ['staff', 'Staff', 'staff'])
-  if (user.role === 'OWNER') tabs.push(['branches', 'Branches', 'branches'])
+  if (user.role === 'OWNER') tabs.push(['branches', 'Branches', 'branches'], ['admin', 'Settings', 'settings'])
 
   // On the bottom tab bar there is room for four destinations plus More.
   const hasMore = tabs.length > 5
@@ -60,8 +72,13 @@ function Shell({ themeBtn }) {
   const inExtra = extra.some(t => t[0] === view)
   const badge = k => k === 'today' && pending > 0 && <i key={k} className="nav-badge">{pending}</i>
 
-  if (shift === undefined) return <div className="center-screen"><Loading label="Loading your till" /></div>
-  const mustOpen = !shift && !skipped && user.role !== 'OWNER'
+  if (billing.loading && !billing.data && !billing.error) return <div className="center-screen"><Loading label="Loading your till" /></div>
+  if (stopped && !(user.role === 'OWNER' && view === 'admin')) {
+    const message = blocked ?? (billing.data?.suspendedReason ? `This account is suspended: ${billing.data.suspendedReason}.` : st === 'CANCELLED' ? 'This subscription has ended.' : 'This account is suspended.')
+    return <SuspendedScreen message={message} isOwner={user.role === 'OWNER'} onBilling={() => setView('admin')} onSignOut={logout} />
+  }
+  if (shift === undefined && !stopped) return <div className="center-screen"><Loading label="Loading your till" /></div>
+  const mustOpen = !stopped && !shift && !skipped && user.role !== 'OWNER'
   if (mustOpen || openingShift) {
     return (
       <OpenShift
@@ -112,6 +129,7 @@ function Shell({ themeBtn }) {
             <div className="who-name"><b>{user.name}</b><small>{user.role.toLowerCase()}</small></div>
           </div>
         </header>
+        <BillingBanner status={billing.data} onOpen={user.role === 'OWNER' ? () => setView('admin') : null} />
         <main>
           {view === 'till' && <Till key={branchId} shift={shift} attachCustomer={attach} onCustomerAttached={() => setAttach(null)} />}
           {view === 'history' && <Transactions key={branchId} />}
@@ -120,6 +138,7 @@ function Shell({ themeBtn }) {
           {view === 'today' && isManager && <Today key={branchId} />}
           {view === 'staff' && isManager && <Staff />}
           {view === 'branches' && user.role === 'OWNER' && <Branches />}
+          {view === 'admin' && user.role === 'OWNER' && <Admin initial={stopped ? 'billing' : 'business'} />}
         </main>
       </div>
       {moreOpen && (

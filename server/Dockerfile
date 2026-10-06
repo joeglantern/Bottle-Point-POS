@@ -8,6 +8,8 @@ COPY prisma ./prisma
 COPY prisma.config.ts tsconfig.json ./
 RUN DATABASE_URL=postgresql://build:build@localhost:5432/build npx prisma generate
 COPY src ./src
+# command line tools: npm run platform:admin, npm run billing:run
+COPY scripts ./scripts
 RUN npx tsc -p tsconfig.json
 USER node
 EXPOSE 3000

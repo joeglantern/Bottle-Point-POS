@@ -155,21 +155,21 @@ export const api = {
    * GET /tenants?q&status&planId&sort&dir&limit&offset
    *   status: SubStatus | 'NONE'; sort: 'name' (default) | 'joined' | 'mrr' | 'sales'; dir: 'asc' | 'desc'
    *   (default asc for name, desc otherwise); limit 1 to 200 (default 50); offset.
-   * -> { tenants: [{ id, name, status, plan: { id, name }|null, branches, staff, sales30dCents, mrrCents, createdAt, trialEndsAt|null }],
+   * -> { tenants: [{ id, name, slug|null, url|null, status, plan: { id, name }|null, branches, staff, sales30dCents, mrrCents, createdAt, trialEndsAt|null }],
    *      total,   (rows matching q, planId and status)
    *      counts: { ALL, TRIALING?, ACTIVE?, PAST_DUE?, SUSPENDED?, CANCELLED?, NONE? } }   (per status, ignoring the status filter; absent means 0)
    */
   listTenants: (filters, opts) => get('/tenants', filters, opts),
   /**
-   * POST /tenants { businessName, branchName, ownerName, ownerUsername, ownerPin?, planId, trialDays? (0 to 90), email?, phone? }
-   * -> 201 { tenant: { id, name, email|null, phone|null, createdAt }, branch: { id, name }, owner: { id, name, username },
-   *          subscription: TenantSub, invoice: { id, number, totalCents, status }|null,
+   * POST /tenants { businessName, slug (the web address: 3 to 40 lowercase letters, digits or dashes, not reserved), branchName, ownerName, ownerUsername, ownerPin?, planId? (omit to start without billing), trialDays? (0 to 90), email?, phone? }
+   * -> 201 { tenant: { id, name, slug, url (https://<slug>.<domain>), email|null, phone|null, createdAt }, branch: { id, name }, owner: { id, name, username },
+   *          subscription: TenantSub|null (null without a plan), invoice: { id, number, totalCents, status }|null,
    *          ownerPin: string|null }   (the generated PIN, shown once; null when one was supplied)
-   * 409 duplicate_username.
+   * 409 duplicate_username, duplicate_slug.
    */
   createTenant: (body, opts) => post('/tenants', body, opts),
   /**
-   * GET /tenants/:id -> { tenant: { id, name, legalName|null, email|null, phone|null, address|null, kraPin|null, createdAt,
+   * GET /tenants/:id -> { tenant: { id, name, slug|null, url|null, legalName|null, email|null, phone|null, address|null, kraPin|null, createdAt,
    *   status, subscription: TenantSub|null, usage: { branches, staff, products },
    *   limits: { maxBranches|null, maxStaff|null, maxProducts|null }|null,
    *   sales30dCents, mrrCents, lastSaleAt|null, lastSignInAt|null, owners: [{ id, name, username }],
@@ -177,7 +177,7 @@ export const api = {
    *   openInvoiceCents, openInvoiceCount, overdueInvoiceCount } }
    */
   getTenant: (tenantId, opts) => get(`/tenants/${id(tenantId)}`, undefined, opts),
-  /** PATCH /tenants/:id { name?, legalName?, email?, phone?, address?, kraPin? } ('' or null clears) -> { tenant: { id, name, legalName, email, phone, address, kraPin } } */
+  /** PATCH /tenants/:id { name?, slug? (super admin only, moves the client's address), legalName?, email?, phone?, address?, kraPin? } ('' or null clears) -> { tenant: { id, name, slug, url, legalName, email, phone, address, kraPin } }. 409 duplicate_slug. */
   updateTenant: (tenantId, body, opts) => patch(`/tenants/${id(tenantId)}`, body, opts),
   /** POST /tenants/:id/suspend { reason (3 to 300 chars) } -> { subscription: TenantSub }. 422 no_subscription or already suspended or cancelled. */
   suspendTenant: (tenantId, reason, opts) => post(`/tenants/${id(tenantId)}/suspend`, { reason }, opts),

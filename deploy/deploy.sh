@@ -94,6 +94,7 @@ ssh "$HOST" "cat > ~/$APP/docker-compose.yml" < "$SRC/deploy/docker-compose.yml"
 ssh "$HOST" "cat > ~/$APP/conf/default.conf" < "$SRC/deploy/nginx.conf"
 ssh "$HOST" "cat > ~/$APP/conf/console.conf" < "$SRC/deploy/nginx-console.conf"
 ssh "$HOST" "cat > ~/$APP/sites.sh" < "$SRC/deploy/sites.sh"
+ssh "$HOST" "cat > ~/$APP/backup.sh" < "$SRC/deploy/backup.sh"
 
 echo "Starting containers..."
 ssh "$HOST" PUBLIC_URL="$PUBLIC_URL" CONSOLE_URL="$CONSOLE_URL" RELEASE="$RELEASE" FRESH="${FRESH:-}" DOMAIN="$DOMAIN" \
@@ -136,7 +137,7 @@ fi
 printf 'WEB_PORT=%s\nCONSOLE_PORT=%s\nBIND=%s\nDOMAIN=%s\nCADDY_CONF_DIR=%s\nCADDY_CONTAINER=%s\n' \
   "$WEB_PORT" "$CONSOLE_PORT" "$BIND" "$DOMAIN" "$CADDY_CONF_DIR" "$CADDY_CONTAINER" > .env
 chmod 644 conf/default.conf conf/console.conf .env
-chmod 755 sites.sh
+chmod 755 sites.sh backup.sh
 
 ln -sfn releases/$RELEASE web/current
 ln -sfn releases/$RELEASE console/current
@@ -181,8 +182,29 @@ AccuracySec=10s
 WantedBy=timers.target
 UNIT
   export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+  # nightly database backup at 02:30 server time, last 14 days kept
+  cat > ~/.config/systemd/user/bottle-point-backup.service <<'UNIT'
+[Unit]
+Description=Bottle Point: nightly database backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/apps/bottle-point
+ExecStart=/bin/bash %h/apps/bottle-point/backup.sh
+UNIT
+  cat > ~/.config/systemd/user/bottle-point-backup.timer <<'UNIT'
+[Unit]
+Description=Back up the Bottle Point database every night
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
   if loginctl show-user "$(id -un)" -p Linger 2>/dev/null | grep -q yes; then
-    systemctl --user daemon-reload && systemctl --user enable --now bottle-point-sites.timer >/dev/null
+    systemctl --user daemon-reload && systemctl --user enable --now bottle-point-sites.timer bottle-point-backup.timer >/dev/null
   else
     echo "Note: new client addresses need: loginctl enable-linger $(id -un), or run sites.sh after onboarding."
   fi

@@ -45,14 +45,25 @@ async function waitText(text, ms = 8000) {
   while (Date.now() < end) { if (await hasText(text)) return true; await sleep(150) }
   return false
 }
-const nav = title => page.click(`.rail button[title="${title}"]`).then(() => sleep(700))
+const nav = async label => {
+  // on narrow screens some destinations live under More
+  const visible = await page.$eval(`.rail button[aria-label="${label}"]`, el => el.offsetParent !== null && getComputedStyle(el).display !== 'none').catch(() => false)
+  if (visible) await page.click(`.rail button[aria-label="${label}"]`)
+  else { await page.click(".nav-more"); await sleep(300); await page.evaluate(l => [...document.querySelectorAll(".more-item")].find(b => b.textContent.includes(l)).click(), label) }
+  await sleep(700)
+}
 
+// Staff type their username, then the PIN, then press Sign in.
+const USERNAMES = { 'Wanjiru K.': 'wanjiru', 'Brian M.': 'brian', 'Otieno J.': 'otieno', 'Achieng O.': 'achieng' }
 async function signIn(name) {
   await page.goto(URL, { waitUntil: 'networkidle0' })
   await waitText('Sign in')
-  await clickText(name)
+  await page.evaluate(() => { try { localStorage.removeItem('bp-last-user') } catch {} })
+  await page.goto(URL, { waitUntil: 'networkidle0' })
+  await page.type('.login-card input.label-in', USERNAMES[name])
   for (const d of '1234') { await clickText(d); await sleep(60) }
-  await sleep(1200)
+  await page.click('.pad-ok')
+  await sleep(1500)
   if (await hasText('Open your shift')) {
     await clickText('Open shift')
     await sleep(900)
@@ -71,6 +82,7 @@ async function step(name, fn) {
 await step('Cashier signs in and opens the till', async () => {
   await signIn('Wanjiru K.')
   check(await waitText('Unpaid sales'), 'till is showing')
+  await page.waitForSelector('.grid .product', { timeout: 8000 }).catch(() => {})
   check(await page.$$eval('.grid .product', els => els.length) > 5, 'products loaded from the API')
   await shot('01-till')
 })
@@ -191,7 +203,57 @@ await step('Owner sees every branch and manages staff', async () => {
   await signOut()
 })
 
+await step('Owner settings: every section loads', async () => {
+  await signIn('Achieng O.')
+  await nav('Settings')
+  await sleep(800)
+  check(await waitText('On every receipt'), 'business details form')
+  const name = await page.$eval('.admin input.label-in', el => el.value)
+  check(name.length > 1, 'business name is filled in from the server')
+  for (const [tab, expect] of [['M-Pesa', 'Daraja keys'], ['Billing', 'Your plan'], ['Devices', 'Signed in now'], ['Activity', 'Activity log'], ['Exports', 'Download your data']]) {
+    await page.evaluate(t => [...document.querySelectorAll('.admin-tabs button')].find(b => b.textContent === t).click(), tab)
+    await sleep(900)
+    check(await waitText(expect), `${tab} section shows`)
+    await shot('13-settings-' + tab.toLowerCase().replace(/\W/g, ''))
+  }
+  // the M-Pesa test button answers in plain words
+  await page.evaluate(() => [...document.querySelectorAll('.admin-tabs button')].find(b => b.textContent === 'M-Pesa').click())
+  await sleep(600)
+  await clickText('Test connection')
+  check(await waitText('simulation') || await waitText('No M-Pesa settings'), 'M-Pesa connection test answers')
+  // an export downloads a real CSV
+  const csv = await page.evaluate(async () => {
+    const a = [...document.querySelectorAll('a.export-item')][0]
+    return a ? (await fetch(a.href, { credentials: 'same-origin' })).text() : ''
+  }).catch(() => '')
+  await page.evaluate(() => [...document.querySelectorAll('.admin-tabs button')].find(b => b.textContent === 'Exports').click())
+  await sleep(500)
+  const csv2 = await page.evaluate(async () => {
+    const a = [...document.querySelectorAll('a.export-item')][0]
+    return (await fetch(a.href, { credentials: 'same-origin' })).text()
+  })
+  check(csv2.includes('Sale number'), 'sales CSV export downloads with a header row')
+  await signOut()
+})
+
+await step('Receipt prints at receipt width', async () => {
+  await page.goto(URL + '/?preview=receipt', { waitUntil: 'networkidle0' })
+  await sleep(800)
+  await page.emulateMediaType('print')
+  const pdf = await page.pdf({ printBackground: true, preferCSSPageSize: true })
+  await page.emulateMediaType(null)
+  const { writeFileSync } = await import('node:fs')
+  writeFileSync(`${SHOTS}/receipt-print.pdf`, pdf)
+  check(pdf.length > 5000, 'receipt prints to a PDF')
+  const width = await page.evaluate(() => {
+    const m = window.matchMedia('print')
+    return document.querySelector('.rc')?.getBoundingClientRect().width ?? 0
+  })
+  check(width > 150, 'receipt is on the page')
+})
+
 await step('Light theme', async () => {
+  await page.goto(URL, { waitUntil: 'networkidle0' })
   await page.click('.theme-btn')
   await sleep(300)
   await shot('12-login-theme')

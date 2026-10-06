@@ -6,14 +6,15 @@ import JsBarcode from 'jsbarcode'
 // Takes a normalised receipt object (amounts in cents), so it works the same
 // for the demo data and for GET /api/sales/:id/receipt:
 // {
-//   business: { name, address?, phone?, kraPin? }, branch: { name },
+//   business: { name, legalName?, address?, phone?, kraPin?, receiptFooter?, vatRateBps? }, branch: { name },
 //   number, status: 'PAID' | 'REFUNDED', paidAt, refundedAt?, servedBy, label?, customer?,
 //   lines: [{ name, qty, unitCents }], subtotalCents, discountCents, totalCents,
 //   payments: [{ method: 'CASH' | 'MPESA', amountCents, tenderedCents?, mpesaRef?, phone?, verification? }],
 //   copy?: boolean
 // }
 
-const VAT_RATE = 0.16
+// most Kenyan shops; the business setting wins when it is known
+const DEFAULT_VAT_BPS = 1600
 
 const money = c => (Math.round(c) / 100).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const when = t =>
@@ -49,7 +50,9 @@ function Barcode({ value }) {
 
 export function ReceiptPaper({ r }) {
   const refund = r.status === 'REFUNDED'
-  const vat = Math.round(r.totalCents - r.totalCents / (1 + VAT_RATE))
+  const vatBps = r.business.vatRateBps ?? DEFAULT_VAT_BPS
+  const vat = r.vatCents ?? (vatBps ? Math.round(r.totalCents - r.totalCents / (1 + vatBps / 10000)) : 0)
+  const vatLabel = `Includes VAT ${(vatBps / 100).toLocaleString('en-KE', { maximumFractionDigits: 2 })}%`
   const items = r.lines.reduce((a, l) => a + l.qty, 0)
   const cashChange = r.payments.filter(p => p.method === 'CASH').reduce((a, p) => a + ((p.tenderedCents ?? p.amountCents) - p.amountCents), 0)
 
@@ -97,7 +100,7 @@ export function ReceiptPaper({ r }) {
         <div><span>{items} item{items === 1 ? '' : 's'}</span><span>{money(r.subtotalCents)}</span></div>
         {r.discountCents > 0 && <div><span>Discount</span><span>-{money(r.discountCents)}</span></div>}
         <div className="rc-total"><span>{refund ? 'Refunded' : 'Total'}</span><span><small>KSh</small>{money(r.totalCents)}</span></div>
-        <div className="rc-vat"><span>Includes VAT 16%</span><span>{money(vat)}</span></div>
+        {vatBps > 0 && <div className="rc-vat"><span>{vatLabel}</span><span>{money(vat)}</span></div>}
       </div>
 
       <div className="rc-pay">
@@ -125,6 +128,7 @@ export function ReceiptPaper({ r }) {
         <Barcode value={receiptCode(r.number)} />
         <span className="rc-ref">{receiptCode(r.number)}</span>
         <p className="rc-thanks">{refund ? 'Refund processed. Keep this slip.' : 'Thank you, karibu tena.'}</p>
+        {r.business.receiptFooter && <p className="rc-custom">{r.business.receiptFooter}</p>}
         <p className="rc-law">Not for sale to persons under the age of 18. Drink responsibly.</p>
         {!refund && <p className="rc-law">Goods once sold are not returnable without this receipt.</p>}
       </footer>
@@ -208,7 +212,16 @@ export default function ReceiptModal({ receipt, onClose, onNewSale, autoPrint = 
 // GET /api/sales/:id/receipt into the shape the receipt draws.
 export function fromApiReceipt(r, copy = false) {
   return {
-    business: { name: r.businessName },
+    business: {
+      name: r.business?.name ?? r.businessName,
+      legalName: r.business?.legalName ?? null,
+      address: r.business?.address ?? null,
+      phone: r.business?.phone ?? null,
+      kraPin: r.business?.kraPin ?? null,
+      receiptFooter: r.business?.receiptFooter ?? null,
+      vatRateBps: r.business?.vatRateBps ?? null
+    },
+    vatCents: r.vatCents ?? null,
     branch: { name: r.branchName },
     number: r.number,
     status: r.status,

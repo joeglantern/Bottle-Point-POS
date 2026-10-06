@@ -95,7 +95,7 @@ export default function Login({ themeBtn }) {
       <div className="login-card">
         <h2>Sign in</h2>
         <p className="muted">{shop.name ? `Staff of ${shop.name}: your username and PIN.` : 'Your username and PIN.'}</p>
-        <label className="field">
+        <label className="field login-user">
           <span>Username</span>
           <input
             ref={userRef}
@@ -109,6 +109,11 @@ export default function Login({ themeBtn }) {
             spellCheck={false}
             enterKeyHint="next"
           />
+          {username && (
+            <button type="button" className="login-clear" aria-label="Clear username, someone else is signing in" onClick={() => { setUsername(''); setPin(''); setErr(''); try { localStorage.removeItem(KEY) } catch {} ; userRef.current?.focus() }}>
+              Not you?
+            </button>
+          )}
         </label>
         <div className="pin-dots" aria-label={pin.length + ' digits entered'}>
           {[0, 1, 2, 3].concat(pin.length > 4 ? [4, 5].slice(0, pin.length - 4) : []).map(i => <span key={i} className={i < pin.length ? 'full' : ''} />)}
