@@ -110,7 +110,7 @@ export default function Today() {
               <span className={r.unpaid.buckets.over4h.count ? 'warn' : ''}>Over 4 hours <b>{r.unpaid.buckets.over4h.count}</b></span>
             </div>
             {r.unpaid.oldest.length > 0 && (
-              <table>
+              <table className="rtable rt-unpaid">
                 <thead><tr><th>Sale</th><th>Label</th><th>Opened by</th><th>Age</th><th className="r">Value</th></tr></thead>
                 <tbody>
                   {r.unpaid.oldest.map(o => (

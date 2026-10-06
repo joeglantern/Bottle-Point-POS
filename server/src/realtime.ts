@@ -1,7 +1,7 @@
 import type { Server as HttpServer } from 'node:http'
 import { Server } from 'socket.io'
 import { actorFromHeaders, type Actor } from './middleware/auth.js'
-import { trustedOrigins } from './env.js'
+import { isTrustedOrigin } from './lib/tenant.js'
 
 // Event names the web app listens for. Payloads are always the full updated
 // object (not a diff) so a client can simply replace what it has.
@@ -22,7 +22,7 @@ const businessRoom = (id: string) => `business:${id}`
 export function initRealtime(server: HttpServer) {
   io = new Server(server, {
     path: '/socket.io',
-    cors: { origin: trustedOrigins, credentials: true },
+    cors: { origin: (origin, cb) => cb(null, !origin || isTrustedOrigin(origin)), credentials: true },
     serveClient: false
   })
 

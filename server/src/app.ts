@@ -4,7 +4,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import { bodyLimit } from 'hono/body-limit'
 import { auth } from './auth.js'
 import { prisma, Prisma } from './db.js'
-import { trustedOrigins } from './env.js'
+import { isTrustedOrigin } from './lib/tenant.js'
 import { AppError } from './lib/errors.js'
 import { requireActiveSubscription, requireAuth, type AppEnv } from './middleware/auth.js'
 import { sessionRoutes } from './routes/session.js'
@@ -24,7 +24,7 @@ export function createApp() {
   const app = new Hono<AppEnv>()
 
   app.use('*', secureHeaders())
-  app.use('/api/*', cors({ origin: trustedOrigins, credentials: true }))
+  app.use('/api/*', cors({ origin: o => (isTrustedOrigin(o) ? o : null), credentials: true }))
   app.use('/api/*', bodyLimit({ maxSize: 100 * 1024 }))
 
   // Cookie auth plus SameSite=Strict already blocks most CSRF. This also
@@ -32,7 +32,7 @@ export function createApp() {
   app.use('/api/*', async (c, next) => {
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD' && c.req.method !== 'OPTIONS') {
       const origin = c.req.header('origin')
-      if (origin && !trustedOrigins.includes(origin) && !c.req.path.startsWith('/api/mpesa/callback')) {
+      if (origin && !isTrustedOrigin(origin) && !c.req.path.startsWith('/api/mpesa/callback')) {
         return c.json({ error: { code: 'bad_origin', message: 'Origin not allowed.' } }, 403)
       }
     }

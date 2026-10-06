@@ -74,6 +74,8 @@ enum StockReason {
 model Business {
   id        String   @id @default(cuid())
   name      String
+  // the client's own address: <slug>.<TENANT_BASE_DOMAIN>, for example nyrolix
+  slug      String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 

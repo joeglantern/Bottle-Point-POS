@@ -6,8 +6,11 @@ import { parseReceiptCode } from '../Receipt.jsx'
 import ReceiptLoader from '../ReceiptLoader.jsx'
 import PayModal from './Pay.jsx'
 import {
-  Bottle, ErrorNote, Field, Icon, Loading, Modal, MoneyInput, ReasonModal, ago, ksh, tintFor, useAction, useToast
+  Bottle, ErrorNote, Field, Icon, Loading, Modal, MoneyInput, ReasonModal, ago, ksh, tintFor, useAction, useDialogFocus, useScrollLock, useToast
 } from '../ui.jsx'
+
+// Keep in step with the compact layout query in styles.css.
+const COMPACT = '(max-width: 899px), (max-width: 1100px) and (orientation: portrait)'
 
 const emptyCart = () => ({ saleId: null, number: null, version: 0, lines: [], label: '', customer: null, paidCents: 0, discountCents: 0, original: null })
 
@@ -45,6 +48,27 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
   const [ask, setAsk] = useState(null) // 'discount' | 'cancel'
   const [discount, setDiscount] = useState(null)
   const [findCustomer, setFindCustomer] = useState(false)
+  // On phones and portrait tablets the order panel is a bottom sheet.
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [sheetTab, setSheetTab] = useState('order')
+  const orderRef = useRef(null)
+  useScrollLock(sheetOpen)
+  useDialogFocus(orderRef, sheetOpen)
+  useEffect(() => {
+    const mq = window.matchMedia(COMPACT)
+    const sync = () => !mq.matches && setSheetOpen(false)
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+  useEffect(() => {
+    if (!sheetOpen) return
+    const onKey = e => e.key === 'Escape' && !document.querySelector('.scrim') && setSheetOpen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sheetOpen])
+  // a finished sale puts the cashier back on the catalog
+  useEffect(() => { if (receiptFor) { setSheetOpen(false); setSheetTab('order') } }, [receiptFor])
+  const showSheet = tab => { setSheetTab(tab); setSheetOpen(true) }
 
   // a customer picked on the Customers screen lands on the current sale
   useEffect(() => {
@@ -185,14 +209,14 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
   const canAsk = cart.saleId && cart.paidCents === 0
 
   return (
-    <div className="cashier">
+    <div className={'cashier till-view' + (sheetOpen ? ' sheet-open' : '')}>
       <section className="catalog">
         <div className="bar">
           <div className="search">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name or barcode" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name or barcode" aria-label="Search products" enterKeyHint="search" autoComplete="off" autoCapitalize="none" />
           </div>
-          <button className="scan-btn" onClick={() => setScanOpen(true)} title="Scan barcode"><Icon k="scan" /><span>Scan</span></button>
+          <button className="scan-btn" onClick={() => setScanOpen(true)} aria-label="Scan barcode"><Icon k="scan" /><span>Scan</span></button>
         </div>
         <div className={'scanner-status' + (lastScan && !lastScan.label ? ' miss' : '')}>
           <span className="pulse" />
@@ -225,7 +249,26 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
         )}
       </section>
 
-      <aside className="order">
+      <div className="till-bar">
+        <button className="till-bar-unpaid" onClick={() => showSheet('unpaid')} aria-label={'Unpaid sales, ' + sales.length}>
+          <span>Unpaid</span><b className="badge">{sales.length}</b>
+        </button>
+        <div className="till-bar-sum" aria-live="polite">
+          <small>{cart.lines.reduce((a, l) => a + l.qty, 0)} {cart.lines.reduce((a, l) => a + l.qty, 0) === 1 ? 'item' : 'items'}</small>
+          <b>{ksh(total)}</b>
+        </div>
+        <button className="gold till-bar-view" onClick={() => showSheet('order')}>View order</button>
+      </div>
+      {sheetOpen && <div className="till-scrim" onClick={() => setSheetOpen(false)} />}
+
+      <aside className="order" data-tab={sheetTab} ref={orderRef} tabIndex={-1} aria-label="Order">
+        <div className="sheet-tabs">
+          <div className="seg" role="tablist">
+            <button role="tab" aria-selected={sheetTab === 'order'} className={sheetTab === 'order' ? 'on' : ''} onClick={() => setSheetTab('order')}>Order</button>
+            <button role="tab" aria-selected={sheetTab === 'unpaid'} className={sheetTab === 'unpaid' ? 'on' : ''} onClick={() => setSheetTab('unpaid')}>Unpaid ({sales.length})</button>
+          </div>
+          <button className="ghost" onClick={() => setSheetOpen(false)}>Close</button>
+        </div>
         <div className="order-head">
           <h3>{cart.saleId ? `Sale #${cart.number}` : 'New sale'}</h3>
           {(cart.saleId || cart.lines.length > 0) && <button className="ghost" onClick={() => (!dirty || window.confirm('Start a new sale? Unsaved changes will be lost.')) && reset()}>New</button>}
@@ -274,7 +317,7 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
           <h4>Unpaid sales <span className="badge">{sales.length}</span></h4>
           {sales.map(s => (
             <div key={s.id} className={'u-row' + (s.id === cart.saleId ? ' current' : '')}>
-              <div onClick={() => openSale(s)} className="u-main">
+              <div onClick={() => { openSale(s); setSheetTab('order') }} className="u-main" role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && (openSale(s), setSheetTab('order'))}>
                 <b>#{s.number} {s.label && <em>{s.label}</em>}</b>
                 <small>{ago(s.createdAt)}{s.paidCents ? ` · ${ksh(s.paidCents)} paid` : ''}</small>
               </div>

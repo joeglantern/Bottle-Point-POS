@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from 'hono'
 import { auth } from '../auth.js'
 import { prisma, type Role, type SubscriptionStatus } from '../db.js'
 import { forbidden, paymentRequired, unauthorized } from '../lib/errors.js'
+import { sessionAllowedHere } from '../lib/tenant.js'
 
 export type Actor = {
   id: string
@@ -45,7 +46,10 @@ export async function loadActor(userId: string): Promise<Actor | null> {
 export async function actorFromHeaders(headers: Headers): Promise<Actor | null> {
   const session = await auth.api.getSession({ headers })
   if (!session) return null
-  return loadActor(session.user.id)
+  const actor = await loadActor(session.user.id)
+  // a session only works on its own business's address
+  if (actor && !(await sessionAllowedHere(headers, actor.businessId))) return null
+  return actor
 }
 
 // Every API route except sign in goes through this.

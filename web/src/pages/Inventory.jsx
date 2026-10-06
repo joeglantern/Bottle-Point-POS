@@ -196,7 +196,7 @@ function History({ item, onClose }) {
     <Modal title={item.name} eyebrow="Stock history" onClose={onClose} wide>
       <ErrorNote error={res.error} />
       {res.loading && !res.data ? <Loading /> : !rows.length ? <Empty>No movements yet.</Empty> : (
-        <table>
+        <table className="rtable rt-hist">
           <thead><tr><th>When</th><th>What</th><th>Note</th><th className="r">Change</th></tr></thead>
           <tbody>
             {rows.map(m => (

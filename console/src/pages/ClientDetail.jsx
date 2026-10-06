@@ -53,6 +53,7 @@ export default function ClientDetail({ id }) {
         <div className="cx-head-meta">
           <StatusPill status={t.status} />
           {sub && <span>{sub.plan.name}</span>}
+          {t.url && <a className="cx-link cx-num" href={t.url} target="_blank" rel="noreferrer">{t.url.replace('https://', '')}</a>}
           <span className="cx-muted">Client since {date(t.createdAt)}</span>
         </div>
       </PageHeader>
@@ -115,6 +116,7 @@ function OverviewTab({ t, onEdit }) {
       <div className="cx-stack">
         <Card title="Business details" actions={<Button size="sm" onClick={onEdit} disabled={!can('tenants.edit')} title={can('tenants.edit') ? undefined : whyNot('tenants.edit')}>Edit</Button>}>
           <dl className="cx-dl">
+            <div><dt>Web address</dt><dd className="cx-num">{t.url ? <a className="cx-link" href={t.url} target="_blank" rel="noreferrer">{t.url.replace('https://', '')}</a> : t.slug ?? <span className="cx-muted">Not set</span>}</dd></div>
             <div><dt>Legal name</dt><dd>{t.legalName ?? <span className="cx-muted">Not set</span>}</dd></div>
             <div><dt>KRA PIN</dt><dd className="cx-num">{t.kraPin ?? <span className="cx-muted">Not set</span>}</dd></div>
             <div><dt>Email</dt><dd>{t.email ? <a className="cx-link" href={`mailto:${t.email}`}>{t.email}</a> : <span className="cx-muted">Not set</span>}</dd></div>

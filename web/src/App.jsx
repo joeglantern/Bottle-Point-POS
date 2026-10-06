@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, qs } from './api.js'
 import { atLeast, useApi, useLive, useSession } from './session.jsx'
-import { Icon, Loading, Logo, ThemeButton, ksh, useTheme, useToast } from './ui.jsx'
+import { Icon, Loading, Logo, Modal, ThemeButton, ksh, useTheme, useToast } from './ui.jsx'
 import Login from './pages/Login.jsx'
 import { OpenShift, ShiftModal } from './pages/Shift.jsx'
 import Till from './pages/Till.jsx'
@@ -30,6 +30,7 @@ function Shell({ themeBtn }) {
   const [shiftOpen, setShiftOpen] = useState(false)
   const [openingShift, setOpeningShift] = useState(false)
   const [attach, setAttach] = useState(null)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   const loadShift = () => api.get('/shifts/current').then(r => setShift(r.shift), () => setShift(null))
   useEffect(() => {
@@ -53,6 +54,12 @@ function Shell({ themeBtn }) {
   if (isManager) tabs.push(['stock', 'Inventory', 'stock'], ['today', 'Today', 'today'], ['staff', 'Staff', 'staff'])
   if (user.role === 'OWNER') tabs.push(['branches', 'Branches', 'branches'])
 
+  // On the bottom tab bar there is room for four destinations plus More.
+  const hasMore = tabs.length > 5
+  const extra = hasMore ? tabs.slice(4) : []
+  const inExtra = extra.some(t => t[0] === view)
+  const badge = k => k === 'today' && pending > 0 && <i key={k} className="nav-badge">{pending}</i>
+
   if (shift === undefined) return <div className="center-screen"><Loading label="Loading your till" /></div>
   const mustOpen = !shift && !skipped && user.role !== 'OWNER'
   if (mustOpen || openingShift) {
@@ -69,21 +76,25 @@ function Shell({ themeBtn }) {
     <div className="shell side">
       <aside className="rail">
         <img src="/brand/bottle-point-mark.png" alt="" className="rail-logo" />
-        <nav>
-          {tabs.map(([k, l, icon]) => (
-            <button key={k} title={l} className={view === k ? 'on' : ''} onClick={() => setView(k)}>
+        <nav aria-label="Main">
+          {tabs.map(([k, l, icon], i) => (
+            <button key={k} aria-label={l} aria-current={view === k ? 'page' : undefined} className={(view === k ? 'on' : '') + (hasMore && i >= 4 ? ' nav-extra' : '')} onClick={() => setView(k)}>
               <Icon k={icon} /><span>{l}</span>
-              {k === 'today' && pending > 0 && <i className="nav-badge">{pending}</i>}
+              {badge(k)}
             </button>
           ))}
+          <button aria-label="More" aria-haspopup="dialog" className={'nav-more' + (inExtra ? ' on' : '')} onClick={() => setMoreOpen(true)}>
+            <Icon k="more" /><span>More</span>
+            {extra.map(t => badge(t[0]))}
+          </button>
         </nav>
-        <button title="Sign out" className="rail-out" onClick={logout}><Icon k="out" /></button>
+        <button aria-label="Sign out" className="rail-out" onClick={logout}><Icon k="out" /><span>Sign out</span></button>
       </aside>
       <div className="body">
         <header className="top">
           <Logo />
           <div className="who">
-            <span className={'live-dot' + (connected ? ' on' : '')} title={connected ? 'Live' : 'Reconnecting'} />
+            <span className={'live-dot' + (connected ? ' on' : '')} title={connected ? 'Live' : 'Reconnecting'} role="img" aria-label={connected ? 'Live' : 'Reconnecting'} />
             {shift ? (
               <button className="shift-pill" onClick={() => setShiftOpen(true)} title="Your shift">
                 <span>Till</span><b>{ksh(shift.expectedCashCents)}</b>
@@ -111,6 +122,29 @@ function Shell({ themeBtn }) {
           {view === 'branches' && user.role === 'OWNER' && <Branches />}
         </main>
       </div>
+      {moreOpen && (
+        <Modal title={user.name} eyebrow={user.role.toLowerCase()} onClose={() => setMoreOpen(false)} className="more-sheet">
+          {extra.length > 0 && (
+            <div className="more-list">
+              {extra.map(([k, l, icon]) => (
+                <button key={k} className={'more-item' + (view === k ? ' on' : '')} onClick={() => { setView(k); setMoreOpen(false) }}>
+                  <Icon k={icon} /><span>{l}</span>{badge(k)}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="more-row">
+            <span>Branch</span>
+            {branches.length > 1 ? (
+              <select className="branch-select" value={branchId ?? ''} onChange={e => chooseBranch(e.target.value)} aria-label="Branch">
+                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            ) : <b>{branch?.name}</b>}
+          </div>
+          <div className="more-row"><span>Theme</span>{themeBtn}</div>
+          <button className="outline wide more-out" onClick={logout}><Icon k="out" />Sign out</button>
+        </Modal>
+      )}
       {shiftOpen && shift && (
         <ShiftModal
           shift={shift}

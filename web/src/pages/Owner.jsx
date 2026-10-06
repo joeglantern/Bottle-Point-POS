@@ -43,7 +43,7 @@ export function Branches() {
             <div className="legend"><span><i className="c" />Cash</span><span><i className="m" />M-Pesa</span></div>
           </div>
           <div className="card flush">
-            <table>
+            <table className="rtable rt-branches">
               <thead><tr><th>Branch</th><th className="r">Sales</th><th className="r">Cash</th><th className="r">M-Pesa</th><th className="r">Refunds</th><th className="r">Unpaid</th><th className="r">Net</th></tr></thead>
               <tbody>
                 {d.branches.map(b => (
@@ -103,7 +103,7 @@ export function Staff() {
       <ErrorNote error={users.error} onRetry={users.reload} />
       {!users.data ? <Loading /> : (
         <div className="card flush">
-          <table>
+          <table className="rtable rt-staff">
             <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Branches</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {users.data.users.map(u => (

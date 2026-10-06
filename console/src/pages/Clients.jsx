@@ -75,7 +75,7 @@ export default function Clients() {
             <tbody>
               {rows.map(t => (
                 <tr key={t.id} className="cx-row-link" onClick={e => { if (!e.target.closest('a')) navigate(`/clients/${t.id}`) }}>
-                  <td className="cx-card-title"><Link to={`/clients/${t.id}`} className="cx-strong-link">{t.name}</Link></td>
+                  <td className="cx-card-title"><Link to={`/clients/${t.id}`} className="cx-strong-link">{t.name}</Link>{t.slug && <small className="cx-muted cx-block cx-num">{t.slug}</small>}</td>
                   <td data-label="Plan">{t.plan?.name ?? <span className="cx-muted">None</span>}</td>
                   <td data-label="Status"><StatusPill status={t.status} />{t.status === 'TRIALING' && t.trialEndsAt ? <small className="cx-muted cx-after"> ends <When at={t.trialEndsAt} /></small> : null}</td>
                   <td data-label="Branches" className="cx-r cx-num">{count(t.branches)}</td>
@@ -100,17 +100,22 @@ export default function Clients() {
       )}
       {created?.ownerPin && (
         <SecretDialog title={`${created.tenant.name} is ready`} label={`PIN for ${created.owner.username}`} value={created.ownerPin} onClose={() => { const id = created.tenant.id; setCreated(null); navigate(`/clients/${id}`) }}>
-          <p>The owner signs in at the till with the username <b className="cx-num">{created.owner.username}</b> and this PIN, then adds their own staff.</p>
+          <p>The owner signs in at {created.tenant.url ? <a className="cx-link" href={created.tenant.url} target="_blank" rel="noreferrer">{created.tenant.url.replace('https://', '')}</a> : 'the till'} with the username <b className="cx-num">{created.owner.username}</b> and this PIN, then adds their own staff.</p>
         </SecretDialog>
       )}
     </>
   )
 }
 
-const USERNAME = /^[a-z0-9._]{3,32}$/
+const USERNAME = /^[a-z0-9][a-z0-9._-]{2,31}$/
+const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/
+const RESERVED = ['www', 'console', 'admin', 'api', 'app', 'pos', 'mail', 'smtp', 'ftp', 'status', 'help', 'support', 'billing', 'docs', 'blog', 'static', 'assets', 'cdn', 'auth', 'login', 'test', 'staging', 'dev']
+const slugify = s => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '')
+const BASE = import.meta.env.VITE_TENANT_BASE_DOMAIN || 'pos.flarehub.co.ke'
 
 function NewClientDialog({ plans, onClose, onCreated }) {
-  const [f, setF] = useState({ businessName: '', branchName: 'Main', ownerName: '', ownerUsername: '', ownerPin: '', planId: plans[0]?.id ?? '', trialDays: '', email: '', phone: '' })
+  const [f, setF] = useState({ businessName: '', slug: '', branchName: 'Main', ownerName: '', ownerUsername: '', ownerPin: '', planId: '', trialDays: '', email: '', phone: '' })
+  const [slugTouched, setSlugTouched] = useState(false)
   const [touched, setTouched] = useState(false)
   const [run, busy, error] = useAction()
   const set = k => e => setF(x => ({ ...x, [k]: e.target.value }))
@@ -118,11 +123,12 @@ function NewClientDialog({ plans, onClose, onCreated }) {
 
   const errors = {}
   if (f.businessName.trim().length < 2) errors.businessName = 'Enter the business name'
+  if (!SLUG.test(f.slug)) errors.slug = '3 to 40 lowercase letters, digits or dashes'
+  else if (RESERVED.includes(f.slug)) errors.slug = 'That address is reserved'
   if (f.branchName.trim().length < 2) errors.branchName = 'Name the first branch'
   if (!f.ownerName.trim()) errors.ownerName = 'Enter the owner name'
   if (!USERNAME.test(f.ownerUsername)) errors.ownerUsername = '3 to 32 lowercase letters, digits, dots or underscores'
   if (f.ownerPin && !/^\d{4,6}$/.test(f.ownerPin)) errors.ownerPin = '4 to 6 digits, or leave empty to generate one'
-  if (!f.planId) errors.planId = 'Choose a plan'
   if (f.trialDays !== '' && !(Number(f.trialDays) >= 0 && Number(f.trialDays) <= 90)) errors.trialDays = '0 to 90 days'
   const server = error?.fields ?? {}
 
@@ -132,10 +138,11 @@ function NewClientDialog({ plans, onClose, onCreated }) {
     if (Object.keys(errors).length) return
     const body = {
       businessName: f.businessName.trim(),
+      slug: f.slug,
       branchName: f.branchName.trim(),
       ownerName: f.ownerName.trim(),
       ownerUsername: f.ownerUsername,
-      planId: f.planId,
+      ...(f.planId ? { planId: f.planId } : {}),
       ...(f.ownerPin ? { ownerPin: f.ownerPin } : {}),
       ...(f.trialDays !== '' ? { trialDays: Number(f.trialDays) } : {}),
       ...(f.email.trim() ? { email: f.email.trim() } : {}),
@@ -159,7 +166,12 @@ function NewClientDialog({ plans, onClose, onCreated }) {
         <fieldset>
           <legend>Business</legend>
           <div className="cx-form-grid">
-            <Field label="Business name" error={err('businessName')}><input className="cx-input" value={f.businessName} onChange={set('businessName')} autoFocus /></Field>
+            <Field label="Business name" error={err('businessName')}>
+              <input className="cx-input" value={f.businessName} onChange={e => { const v = e.target.value; setF(x => ({ ...x, businessName: v, slug: slugTouched ? x.slug : slugify(v) })) }} autoFocus />
+            </Field>
+            <Field label="Web address" hint={f.slug ? `${f.slug}.${BASE}` : `name.${BASE}`} error={err('slug')}>
+              <input className="cx-input cx-num" value={f.slug} onChange={e => { setSlugTouched(true); setF(x => ({ ...x, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40) })) }} autoCapitalize="none" spellCheck={false} />
+            </Field>
             <Field label="First branch" error={err('branchName')}><input className="cx-input" value={f.branchName} onChange={set('branchName')} /></Field>
             <Field label="Email (optional)" error={err('email')}><input className="cx-input" type="email" value={f.email} onChange={set('email')} /></Field>
             <Field label="Phone (optional)" error={err('phone')}><input className="cx-input" type="tel" value={f.phone} onChange={set('phone')} /></Field>
@@ -182,11 +194,12 @@ function NewClientDialog({ plans, onClose, onCreated }) {
           <div className="cx-form-grid">
             <Field label="Plan" error={err('planId')}>
               <select className="cx-select" value={f.planId} onChange={set('planId')}>
+                <option value="">No plan yet, do not bill</option>
                 {plans.map(p => <option key={p.id} value={p.id}>{p.name}, {p.priceText}</option>)}
               </select>
             </Field>
-            <Field label="Trial days" hint={plan ? `Default for ${plan.name}: ${plan.trialDays}. 0 starts billing now.` : null} error={err('trialDays')}>
-              <input className="cx-input cx-num" inputMode="numeric" value={f.trialDays} placeholder={plan ? String(plan.trialDays) : ''} onChange={e => setF(x => ({ ...x, trialDays: e.target.value.replace(/\D/g, '').slice(0, 2) }))} />
+            <Field label="Trial days" hint={plan ? `Default for ${plan.name}: ${plan.trialDays}. 0 starts billing now.` : 'Only used with a plan'} error={err('trialDays')}>
+              <input className="cx-input cx-num" inputMode="numeric" disabled={!plan} value={f.trialDays} placeholder={plan ? String(plan.trialDays) : ''} onChange={e => setF(x => ({ ...x, trialDays: e.target.value.replace(/\D/g, '').slice(0, 2) }))} />
             </Field>
           </div>
         </fieldset>

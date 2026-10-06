@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 
 // Small shared pieces used across screens.
 
@@ -57,12 +57,55 @@ const ICONS = {
   scan: <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10 8v8M13 8v8M17 8v8" />,
   phone: <path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2ZM11 18h2" />,
   refresh: <path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6" />,
+  more: <><circle cx="5" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="19" cy="12" r="1.3" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   edit: <path d="M4 20h4L19 9l-4-4L4 16v4ZM14 6l4 4" />
 }
-export const Icon = ({ k, className = 'ico' }) => <svg viewBox="0 0 24 24" className={className}>{ICONS[k]}</svg>
+export const Icon = ({ k, className = 'ico' }) => <svg viewBox="0 0 24 24" className={className} aria-hidden="true">{ICONS[k]}</svg>
+
+// Stops the page behind a dialog or sheet from scrolling. Counted, so nested dialogs are safe.
+let scrollLocks = 0
+export function useScrollLock(active = true) {
+  useEffect(() => {
+    if (!active) return
+    scrollLocks++
+    document.documentElement.classList.add('bp-lock')
+    return () => {
+      scrollLocks = Math.max(0, scrollLocks - 1)
+      if (!scrollLocks) document.documentElement.classList.remove('bp-lock')
+    }
+  }, [active])
+}
+
+// Moves focus into a dialog, keeps Tab inside it and puts focus back on close.
+// The key handler sits on the dialog itself, so the barcode scanner hook is untouched.
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+export function useDialogFocus(ref, active = true) {
+  useEffect(() => {
+    const el = ref.current
+    if (!active || !el) return
+    const before = document.activeElement
+    if (!el.contains(document.activeElement)) el.focus({ preventScroll: true })
+    const onKey = e => {
+      if (e.key !== 'Tab') return
+      const items = [...el.querySelectorAll(FOCUSABLE)].filter(n => n.offsetParent !== null)
+      if (!items.length) return e.preventDefault()
+      const first = items[0], last = items[items.length - 1], at = document.activeElement
+      if (e.shiftKey && (at === first || at === el)) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus() }
+    }
+    el.addEventListener('keydown', onKey)
+    return () => {
+      el.removeEventListener('keydown', onKey)
+      if (before && before.focus && document.contains(before)) before.focus({ preventScroll: true })
+    }
+  }, [active])
+}
 
 export function Modal({ title, eyebrow, onClose, children, wide = false, className = '' }) {
+  const ref = useRef(null)
+  useScrollLock()
+  useDialogFocus(ref)
   useEffect(() => {
     const onKey = e => e.key === 'Escape' && onClose && onClose()
     window.addEventListener('keydown', onKey)
@@ -70,13 +113,13 @@ export function Modal({ title, eyebrow, onClose, children, wide = false, classNa
   }, [onClose])
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose && onClose()}>
-      <div className={'modal' + (wide ? ' wide' : '') + (className ? ' ' + className : '')} role="dialog" aria-modal="true">
+      <div className={'modal' + (wide ? ' wide' : '') + (className ? ' ' + className : '')} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined} tabIndex={-1} ref={ref}>
         <div className="modal-head">
           <div>
             {eyebrow && <small className="eyebrow">{eyebrow}</small>}
             <h3 className="title-serif sm">{title}</h3>
           </div>
-          {onClose && <button className="ghost" onClick={onClose}>Close</button>}
+          {onClose && <button className="ghost modal-close" onClick={onClose}>Close</button>}
         </div>
         {children}
       </div>
@@ -175,6 +218,8 @@ export function MoneyInput({ cents, onCents, placeholder = '0', autoFocus, ...re
   return (
     <input
       inputMode="decimal"
+      autoComplete="off"
+      enterKeyHint="done"
       value={text}
       autoFocus={autoFocus}
       placeholder={placeholder}

@@ -8,6 +8,9 @@ const schema = z.object({
   BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be at least 32 characters'),
   BETTER_AUTH_URL: z.string().url(),
   TRUSTED_ORIGINS: z.string().default('http://localhost:5173'),
+  // Each client is served at <slug>.<TENANT_BASE_DOMAIN>, for example
+  // nyrolix.pos.flarehub.co.ke. Empty (local development) turns the address check off.
+  TENANT_BASE_DOMAIN: z.string().trim().toLowerCase().regex(/^[a-z0-9.-]+$/).optional(),
   // Encrypts client secrets at rest (their M-Pesa keys). Falls back to a key
   // derived from BETTER_AUTH_SECRET. Changing either makes stored secrets unreadable.
   SECRETS_KEY: z.string().min(32).optional(),

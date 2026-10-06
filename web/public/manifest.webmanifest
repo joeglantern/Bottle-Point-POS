@@ -1,7 +1,11 @@
 {
   "name": "Bottle Point",
   "short_name": "Bottle Point",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
+  "orientation": "any",
+  "description": "Point of sale for wines, spirits and local pubs.",
   "display": "standalone",
   "background_color": "#09090a",
   "theme_color": "#09090a",

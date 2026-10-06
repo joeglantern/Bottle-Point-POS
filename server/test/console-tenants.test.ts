@@ -34,6 +34,8 @@ beforeEach(async () => {
   })
 })
 
+// every client needs its own address; derive one from the name unless a test sets it
+const slugOf = (name: unknown) => String(name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'x-shop'
 const onboard = (over: Record<string, unknown> = {}, as: Client = support) =>
   as.post('/api/console/tenants', {
     businessName: 'Mama Njeri Wines',
@@ -41,6 +43,7 @@ const onboard = (over: Record<string, unknown> = {}, as: Client = support) =>
     ownerName: 'Njeri Kamau',
     ownerUsername: 'njeri',
     planId: starter.id,
+    slug: slugOf(over.businessName ?? 'Mama Njeri Wines'),
     ...over
   })
 
@@ -110,7 +113,7 @@ describe('console tenants: who may call', () => {
       expect((await billing.get(`/api/console/tenants${path}`)).status, path).toBe(200)
     }
     const writes: [string, string, unknown][] = [
-      ['POST', '', { businessName: 'Kwa Otieno Liquor', branchName: 'Main', ownerName: 'Otieno', ownerUsername: 'otieno', planId: starter.id }],
+      ['POST', '', { businessName: 'Kwa Otieno Liquor', slug: 'kwa-otieno', branchName: 'Main', ownerName: 'Otieno', ownerUsername: 'otieno', planId: starter.id }],
       ['PATCH', `/${id}`, { name: 'Renamed' }],
       ['POST', `/${id}/suspend`, { reason: 'Testing' }],
       ['POST', `/${id}/reactivate`, {}],
@@ -217,6 +220,18 @@ describe('console tenants: onboarding', () => {
     expect(await prisma.subscription.count()).toBe(1)
   })
 
+  it('can start a client without a plan, and refuses an address already in use', async () => {
+    const r = await onboard({ planId: undefined, slug: 'nyrolix', businessName: 'Nyrolix' })
+    expect(r.status).toBe(201)
+    expect(r.body.subscription).toBeNull()
+    expect(r.body.tenant.slug).toBe('nyrolix')
+    const t = await support.get(`/api/console/tenants/${r.body.tenant.id}`)
+    expect(t.body.tenant.status).toBe('NONE')
+    const again = await onboard({ slug: 'nyrolix', businessName: 'Another', ownerUsername: 'another' })
+    expect(again.status).toBe(409)
+    expect(again.body.error.code).toBe('duplicate_slug')
+  })
+
   it('validates the request', async () => {
     const bad: Record<string, unknown>[] = [
       { businessName: '' },
@@ -231,7 +246,11 @@ describe('console tenants: onboarding', () => {
       { trialDays: 1.5 },
       { email: 'not an email' },
       { phone: '12345' },
-      { planId: undefined }
+      { slug: 'Bad Slug' },
+      { slug: 'a' },
+      { slug: '-dash' },
+      { slug: 'console' },
+      { slug: undefined }
     ]
     for (const over of bad) {
       const res = await onboard(over)
@@ -367,6 +386,8 @@ describe('console tenants: list and client page', () => {
     expect(res.body.tenant).toEqual({
       id: fx.business.id,
       name: 'Test Wines and Spirits',
+      slug: null,
+      url: null,
       legalName: 'Test Wines Limited',
       email: 'accounts@testwines.co.ke',
       phone: '254722000111',

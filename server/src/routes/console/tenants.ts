@@ -5,7 +5,9 @@ import { platformAudit } from '../../lib/audit.js'
 import { conflict, forbidden, notFound, unprocessable } from '../../lib/errors.js'
 import { createStaff, pinSchemaRule, setPin } from '../../lib/users.js'
 import { body, id as idRule, phone, query } from '../../lib/validate.js'
-import { allowPlatform, type ConsoleEnv } from '../../middleware/platform.js'
+import { allowPlatform, assertPlatform, type ConsoleEnv } from '../../middleware/platform.js'
+import { env } from '../../env.js'
+import { forgetTenant, RESERVED_SLUGS, SLUG_RE } from '../../lib/tenant.js'
 import { billedInArrears, describePrice, monthlyValueCents, periodEnd } from '../../rules/pricing.js'
 import {
   DAY_MS,
@@ -26,8 +28,24 @@ export const tenantRoutes = new Hono<ConsoleEnv>()
 
 const care = allowPlatform('SUPPORT')
 const STATUSES = ['TRIALING', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED', 'NONE'] as const
-const isUnique = (err: unknown) => err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
+
+// The client's own address, for example https://nyrolix.pos.flarehub.co.ke
+export const tenantUrl = (slug: string | null | undefined) =>
+  slug && env.TENANT_BASE_DOMAIN ? `https://${slug}.${env.TENANT_BASE_DOMAIN}` : null
+
+const slugRule = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(SLUG_RE, 'Use 3 to 40 lowercase letters, digits or dashes, not starting or ending with a dash')
+  .refine(v => !RESERVED_SLUGS.has(v), 'That address is reserved. Choose another one.')
+
+// Two clients cannot share a username or an address.
+function uniqueField(err: unknown): 'slug' | 'username' | null {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return null
+  return JSON.stringify(err.meta ?? {}).includes('slug') ? 'slug' : 'username'
+}
 
 // ---------- list ----------
 
@@ -43,6 +61,7 @@ const listQuery = z.object({
 type ListRow = {
   id: string
   name: string
+  slug: string | null
   createdAt: Date
   status: (typeof STATUSES)[number]
   trialEndsAt: Date | null
@@ -91,7 +110,7 @@ tenantRoutes.get('/tenants', async c => {
   // the figure sent to the browser is priced in code below.
   const rows = await prisma.$queryRaw<ListRow[]>`
     WITH base AS (
-      SELECT b."id", b."name", b."createdAt", COALESCE(s."status"::text, 'NONE') AS "status", s."trialEndsAt",
+      SELECT b."id", b."name", b."slug", b."createdAt", COALESCE(s."status"::text, 'NONE') AS "status", s."trialEndsAt",
         p."id" AS "planId", p."name" AS "planName", p."model"::text AS "model", p."interval"::text AS "interval",
         p."priceCents", p."perBranchCents", p."percentBps", p."minimumCents", s."discountBps", s."customPriceCents",
         (SELECT COUNT(*) FROM "Branch" br WHERE br."businessId" = b."id" AND br."active")::int AS "branches",
@@ -155,6 +174,8 @@ tenantRoutes.get('/tenants', async c => {
     return {
       id: r.id,
       name: r.name,
+      slug: r.slug,
+      url: tenantUrl(r.slug),
       status: r.status,
       plan: r.planId ? { id: r.planId, name: r.planName } : null,
       branches: r.branches,
@@ -172,6 +193,7 @@ tenantRoutes.get('/tenants', async c => {
 
 const onboardSchema = z.object({
   businessName: z.string().trim().min(2).max(120),
+  slug: slugRule,
   branchName: z.string().trim().min(1).max(80),
   ownerName: z.string().trim().min(2).max(120),
   ownerUsername: z
@@ -180,7 +202,8 @@ const onboardSchema = z.object({
     .toLowerCase()
     .regex(/^[a-z0-9][a-z0-9._-]{2,31}$/, 'Username is 3 to 32 letters, digits, dots, dashes or underscores'),
   ownerPin: z.string().regex(pinSchemaRule, 'PIN is 4 to 6 digits').optional(),
-  planId: idRule,
+  // optional: a client can start without a plan and be put on one later
+  planId: idRule.optional(),
   trialDays: z.number().int().min(0).max(90).optional(),
   email: z.string().trim().toLowerCase().email().max(200).optional(),
   phone: phone.optional()
@@ -213,18 +236,20 @@ tenantRoutes.post('/tenants', care, async c => {
   const platform = c.get('platform')
   const input = await body(c, onboardSchema)
   const dupe = () => conflict(`The username ${input.ownerUsername} is already taken.`, 'duplicate_username')
+  const slugTaken = () => conflict(`The address ${input.slug} is already used by another client.`, 'duplicate_slug')
   // Shown once in the response. Never stored in plain, logged or audited.
   const generated = input.ownerPin ? null : randomPin()
   const pin = input.ownerPin ?? generated!
   try {
     const out = await prisma.$transaction(async tx => {
-      const plan = await tx.plan.findUnique({ where: { id: input.planId } })
-      if (!plan) throw notFound('Plan')
-      if (!plan.active) throw unprocessable(`The ${plan.name} plan is archived and cannot be given to new clients.`, 'plan_archived')
+      const plan = input.planId ? await tx.plan.findUnique({ where: { id: input.planId } }) : null
+      if (input.planId && !plan) throw notFound('Plan')
+      if (plan && !plan.active) throw unprocessable(`The ${plan.name} plan is archived and cannot be given to new clients.`, 'plan_archived')
       if (await tx.user.findUnique({ where: { username: input.ownerUsername } })) throw dupe()
+      if (await tx.business.findUnique({ where: { slug: input.slug } })) throw slugTaken()
 
       const business = await tx.business.create({
-        data: { name: input.businessName, email: input.email ?? null, phone: input.phone ?? null }
+        data: { name: input.businessName, slug: input.slug, email: input.email ?? null, phone: input.phone ?? null }
       })
       const branch = await tx.branch.create({ data: { businessId: business.id, name: input.branchName } })
       const owner = await createStaff(tx, {
@@ -237,6 +262,11 @@ tenantRoutes.post('/tenants', care, async c => {
       })
 
       const now = new Date()
+      if (!plan) {
+        await platformAudit(tx, platform, 'console.tenant.created', 'Business', business.id,
+          { businessName: business.name, slug: business.slug, branchName: branch.name, ownerUsername: owner.username, plan: null, pinGenerated: !!generated }, business.id)
+        return { business, branch, owner, sub: null, invoice: null }
+      }
       const trialDays = input.trialDays ?? plan.trialDays
       const trialEndsAt = trialDays > 0 ? new Date(now.getTime() + trialDays * DAY_MS) : null
       const sub = await tx.subscription.create({
@@ -263,6 +293,7 @@ tenantRoutes.post('/tenants', care, async c => {
         business.id,
         {
           businessName: business.name,
+          slug: business.slug,
           branchName: branch.name,
           ownerUsername: owner.username,
           plan: plan.code,
@@ -275,17 +306,27 @@ tenantRoutes.post('/tenants', care, async c => {
     })
     return c.json(
       {
-        tenant: { id: out.business.id, name: out.business.name, email: out.business.email, phone: out.business.phone, createdAt: out.business.createdAt },
+        tenant: {
+          id: out.business.id,
+          name: out.business.name,
+          slug: out.business.slug,
+          url: tenantUrl(out.business.slug),
+          email: out.business.email,
+          phone: out.business.phone,
+          createdAt: out.business.createdAt
+        },
         branch: { id: out.branch.id, name: out.branch.name },
         owner: { id: out.owner.id, name: out.owner.name, username: out.owner.username },
-        subscription: subscriptionDTO(out.sub),
+        subscription: out.sub ? subscriptionDTO(out.sub) : null,
         invoice: out.invoice ? { id: out.invoice.id, number: out.invoice.number, totalCents: out.invoice.totalCents, status: out.invoice.status } : null,
         ownerPin: generated
       },
       201
     )
   } catch (err) {
-    if (isUnique(err)) throw dupe()
+    const field = uniqueField(err)
+    if (field === 'slug') throw slugTaken()
+    if (field) throw dupe()
     throw err
   }
 })
@@ -317,6 +358,8 @@ tenantRoutes.get('/tenants/:id', async c => {
     tenant: {
       id: business.id,
       name: business.name,
+      slug: business.slug,
+      url: tenantUrl(business.slug),
       legalName: business.legalName,
       email: business.email,
       phone: business.phone,
@@ -369,6 +412,7 @@ const patchSchema = z
       .union([z.string().trim().toUpperCase().regex(/^[A-Z]\d{9}[A-Z]$/, 'A KRA PIN is a letter, nine digits and a letter'), z.literal(''), z.null()])
       .transform(v => v || null)
   })
+  .extend({ slug: slugRule })
   .partial()
   .refine(v => Object.keys(v).length > 0, 'Nothing to change')
 
@@ -376,8 +420,15 @@ tenantRoutes.patch('/tenants/:id', care, async c => {
   const platform = c.get('platform')
   const businessId = c.req.param('id')
   const input = await body(c, patchSchema)
+  // moving a client to a new address breaks their bookmarks: super admins only
+  if (input.slug !== undefined) assertPlatform(platform, 'SUPER_ADMIN')
+  let oldSlug: string | null = null
   const business = await prisma.$transaction(async tx => {
     const before = await requireBusiness(tx, businessId)
+    oldSlug = before.slug
+    if (input.slug && input.slug !== before.slug && (await tx.business.findUnique({ where: { slug: input.slug } }))) {
+      throw conflict(`The address ${input.slug} is already used by another client.`, 'duplicate_slug')
+    }
     const changed: Record<string, { from: unknown; to: unknown }> = {}
     for (const [k, v] of Object.entries(input)) {
       const old = (before as Record<string, unknown>)[k]
@@ -387,10 +438,14 @@ tenantRoutes.patch('/tenants/:id', care, async c => {
     await platformAudit(tx, platform, 'console.tenant.updated', 'Business', businessId, { businessName: after.name, changed }, businessId)
     return after
   })
+  forgetTenant(oldSlug)
+  forgetTenant(business.slug)
   return c.json({
     tenant: {
       id: business.id,
       name: business.name,
+      slug: business.slug,
+      url: tenantUrl(business.slug),
       legalName: business.legalName,
       email: business.email,
       phone: business.phone,

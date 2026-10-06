@@ -6,6 +6,7 @@ import { AppError, unauthorized } from '../lib/errors.js'
 import { body } from '../lib/validate.js'
 import { audit } from '../lib/audit.js'
 import { requireAuth, type AppEnv } from '../middleware/auth.js'
+import { tenantMode, tenantOf } from '../lib/tenant.js'
 
 const MAX_TRIES = 5
 const LOCK_MINUTES = 5
@@ -22,7 +23,14 @@ export const sessionRoutes = new Hono<AppEnv>()
 // shared till).
 sessionRoutes.post('/pin', async c => {
   const input = await body(c, pinLogin)
-  const user = await prisma.user.findUnique({ where: { username: input.username } })
+  // on a client's own address only that client's staff can sign in
+  const tenant = tenantMode() ? await tenantOf(c) : null
+  if (tenantMode() && !tenant) throw new AppError(404, 'no_shop', 'There is no shop at this address.')
+  const found = await prisma.user.findUnique({ where: { username: input.username } })
+  // someone else's staff on this address are treated exactly like an unknown name,
+  // and never count towards that person's lockout
+  const user = found && (!tenant || found.businessId === tenant.id) ? found : null
+  if (found && !user) throw unauthorized('Wrong username or PIN.')
 
   if (user?.lockedUntil && user.lockedUntil > new Date()) {
     const mins = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000)
@@ -76,15 +84,11 @@ sessionRoutes.get('/me', requireAuth, async c => {
   return c.json({ user: actor, branches })
 })
 
-// Names shown on the sign in screen of a till. Only active staff of the
-// branch, no roles or other detail.
-sessionRoutes.get('/staff', async c => {
-  const branchId = c.req.query('branchId')
-  if (!branchId) return c.json({ staff: [] })
-  const staff = await prisma.user.findMany({
-    where: { active: true, OR: [{ branches: { some: { branchId } } }, { role: 'OWNER', business: { branches: { some: { id: branchId } } } }] },
-    select: { name: true, username: true, role: true },
-    orderBy: { name: 'asc' }
-  })
-  return c.json({ staff })
+// The shop this address belongs to, so the sign in screen can greet it by
+// name. Public, and says nothing more than the name.
+sessionRoutes.get('/tenant', async c => {
+  if (!tenantMode()) return c.json({ tenant: null, tenantMode: false })
+  const tenant = await tenantOf(c)
+  if (!tenant) throw new AppError(404, 'no_shop', 'There is no shop at this address.')
+  return c.json({ tenant: { name: tenant.name, slug: tenant.slug }, tenantMode: true })
 })

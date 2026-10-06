@@ -6,11 +6,12 @@ A sale is saved the moment it is recorded, and only counts as paid once a cashie
 
 ![Bottle Point](web/public/brand/bottle-point-lockup-light.png)
 
-Live demo: http://156.67.25.84:8085 (sign in as Wanjiru, Brian, Otieno or Achieng, PIN `1234`)
+Production: every client has its own address, `<name>.pos.flarehub.co.ke` (for example https://nyrolix.pos.flarehub.co.ke). The company console is at https://console.pos.flarehub.co.ke.
 
 ## What is here
 
 - `web/` the till, manager and owner screens (Vite, React). Works with USB and Bluetooth barcode scanners.
+- `console/` the company console for running Bottle Point as a service: clients, plans, subscriptions, invoices, team (Vite, React)
 - `server/` the API (Node, Hono, Better Auth, Prisma, PostgreSQL, Socket.IO)
 - `deploy/` Docker Compose, nginx config and the deploy script
 - `PLAN.md` architecture, data model, security and roadmap
@@ -53,12 +54,18 @@ For the sandbox or production, set `MPESA_MODE`, `MPESA_CONSUMER_KEY`, `MPESA_CO
 
 ## Deploy
 
+Production runs on kiptoosvr behind the CRM's Caddy, which already owns ports 80 and 443. Bottle Point adds only its own site file (`bottle-point.caddy`) to that Caddy's `conf.d` folder, and its containers listen only on the Docker bridge, never on a public port.
+
 ```
-./deploy/deploy.sh
+DEPLOY_HOST=kiptoo DOMAIN=pos.flarehub.co.ke CADDY_CONF_DIR=/home/liban/flare-crm/infra/docker/caddy/conf.d CADDY_CONTAINER=crm-caddy-1 ./deploy/deploy.sh
 ```
 
-Builds the web app, uploads it and the API source to `~/apps/bottle-point` on the server, and runs Postgres, the API and nginx as the `bottle-point` Docker Compose project on port 8085. Nothing shared on the server is touched and no sudo is needed. Secrets (`db.env`, `api.env`) are generated on the server on the first deploy and never leave it. The demo data is loaded on the first deploy; `SEED_DEMO=1 ./deploy/deploy.sh` loads it again if it is missing.
+DNS: `pos` and `*.pos` A records on flarehub.co.ke point at the server, so any client address works without new DNS records. Each address gets its HTTPS certificate when it is added to the Caddy site file, which happens on every deploy and by running this after onboarding a new client:
 
-Each web release goes into its own folder and the last five are kept. To roll back the web app, point `web/current` at an older release.
+```
+ssh kiptoo 'bash ~/apps/bottle-point/sites.sh'
+```
 
-When a domain is ready: add a server block on the host nginx that proxies to `127.0.0.1:8085`, get a certificate with certbot, then in `api.env` set `BETTER_AUTH_URL` and `TRUSTED_ORIGINS` to the https address and `COOKIE_SECURE=true`, and close port 8085 to the public.
+`FRESH=yes-delete-all-data` wipes Bottle Point's own database and secrets first. It never touches anything else on the server.
+
+The demo data generator (`npm run db:seed` in `server/`) is for local development only. Deploys never run it.

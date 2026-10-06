@@ -54,7 +54,7 @@ export default function Transactions() {
       <ErrorNote error={res.error} onRetry={res.reload} />
       {res.loading && !res.data ? <Loading /> : !rows.length ? <Empty>No sales for this day yet.</Empty> : (
         <div className="card flush">
-          <table>
+          <table className="rtable rt-tx">
             <thead><tr><th>Sale</th><th>Time</th><th>Items</th><th>Payment</th><th>Status</th><th className="r">Total</th></tr></thead>
             <tbody>
               {rows.map(s => (

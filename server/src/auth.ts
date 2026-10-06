@@ -3,6 +3,7 @@ import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { username } from 'better-auth/plugins'
 import { prisma } from './db.js'
 import { env, secureCookies, trustedOrigins } from './env.js'
+import { isTrustedOrigin } from './lib/tenant.js'
 
 // Staff sign in with username and PIN. Accounts are only ever created by an
 // owner (or the seed), never through a public sign up route.
@@ -10,7 +11,12 @@ export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
   basePath: '/api/auth',
-  trustedOrigins,
+  // the fixed list, plus the calling origin when it matches a wildcard entry
+  // such as https://*.pos.flarehub.co.ke
+  trustedOrigins: request => {
+    const origin = request?.headers.get('origin')
+    return origin && isTrustedOrigin(origin) ? [...trustedOrigins.filter(o => !o.includes('*')), origin] : trustedOrigins.filter(o => !o.includes('*'))
+  },
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   emailAndPassword: {
     enabled: true,
