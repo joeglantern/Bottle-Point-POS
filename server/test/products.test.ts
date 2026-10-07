@@ -257,3 +257,23 @@ describe('product form messages', () => {
     expect((await c.post('/api/products', { ...newProduct, barcode: '071319820756' })).status).toBe(201)
   })
 })
+
+describe('shops that do not count stock', () => {
+  it('shows no stock figures once the owner switches tracking off, and only an owner can', async () => {
+    const owner = await Client.login('owner')
+    const manager = await Client.login('manager')
+    expect((await manager.req('PATCH', '/api/admin/business', { trackStock: false })).status).toBe(403)
+    const r = await owner.req('PATCH', '/api/admin/business', { trackStock: false })
+    expect(r.status).toBe(200)
+    expect(r.body.business.trackStock).toBe(false)
+
+    const c = await Client.login('cashier')
+    expect((await c.get('/api/session/me')).body.user.trackStock).toBe(false)
+    const list = (await c.get('/api/products')).body.products
+    expect(list.every((p: any) => p.qty === null)).toBe(true)
+
+    // selling still records what left the shelf, so tracking can start again later
+    expect((await owner.req('PATCH', '/api/admin/business', { trackStock: true })).status).toBe(200)
+    expect((await c.get('/api/products')).body.products[0].qty).toBe(50)
+  })
+})

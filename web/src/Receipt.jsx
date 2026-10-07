@@ -28,8 +28,11 @@ export function maskPhone(p) {
 }
 
 // Printed on the receipt and read back by the till scanner to open the sale.
-export const receiptCode = number => 'BP' + String(number).padStart(6, '0')
-export const parseReceiptCode = code => (/^BP\d{6}$/.test(code) ? Number(code.slice(2)) : null)
+// A sale made offline has no number yet: its till's receipt number (T2-0041)
+// is printed and scanned instead.
+const OFFLINE_REF = /^T\d{1,4}-\d{1,8}$/
+export const receiptCode = number => (OFFLINE_REF.test(String(number)) ? String(number) : 'BP' + String(number).padStart(6, '0'))
+export const parseReceiptCode = code => (/^BP\d{6}$/.test(code) ? Number(code.slice(2)) : OFFLINE_REF.test(code) ? code : null)
 
 function Barcode({ value }) {
   const ref = useRef(null)
@@ -76,6 +79,7 @@ export function ReceiptPaper({ r }) {
 
       <dl className="rc-meta">
         <div><dt>Receipt</dt><dd>#{r.number}</dd></div>
+        {r.offlineRef && r.offlineRef !== r.number && <div><dt>Till receipt</dt><dd>{r.offlineRef}</dd></div>}
         <div><dt>Date</dt><dd>{when(refund && r.refundedAt ? r.refundedAt : r.paidAt)}</dd></div>
         <div><dt>Served by</dt><dd>{r.servedBy}</dd></div>
         {r.customer && <div><dt>Customer</dt><dd>{r.customer}</dd></div>}
@@ -224,6 +228,7 @@ export function fromApiReceipt(r, copy = false) {
     vatCents: r.vatCents ?? null,
     branch: { name: r.branchName },
     number: r.number,
+    offlineRef: r.offlineRef ?? null,
     status: r.status,
     paidAt: r.paidAt,
     refundedAt: r.refundedAt,

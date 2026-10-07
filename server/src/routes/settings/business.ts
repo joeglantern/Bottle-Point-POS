@@ -19,7 +19,8 @@ const businessSelect = {
   address: true,
   kraPin: true,
   receiptFooter: true,
-  vatRateBps: true
+  vatRateBps: true,
+  trackStock: true
 } as const
 
 // Optional text: trimmed, and an empty string (or null) clears the field.
@@ -57,7 +58,8 @@ const patchSchema = z
       .transform(s => (s === '' ? null : s)),
     receiptFooter: text(200, 'Receipt footer'),
     // 0 for a shop that is not registered for VAT
-    vatRateBps: z.number().int('VAT rate must be a whole number of basis points').min(0).max(5000, 'VAT rate is at most 5000 (50%)')
+    vatRateBps: z.number().int('VAT rate must be a whole number of basis points').min(0).max(5000, 'VAT rate is at most 5000 (50%)'),
+    trackStock: z.boolean()
   })
   .partial()
   .refine(v => Object.values(v).some(x => x !== undefined), 'Nothing to change')
@@ -83,7 +85,7 @@ businessRoutes.patch('/business', requireRole('OWNER'), async c => {
     const before = await tx.business.findUniqueOrThrow({ where: { id: actor.businessId }, select: businessSelect })
     const fields = FIELDS.filter(k => input[k] !== undefined && input[k] !== before[k])
     if (!fields.length) return before
-    const pick = (src: Partial<Record<Field, string | number | null>>) => Object.fromEntries(fields.map(k => [k, src[k] ?? null]))
+    const pick = (src: Partial<Record<Field, string | number | boolean | null>>) => Object.fromEntries(fields.map(k => [k, src[k] ?? null]))
     const after = await tx.business.update({ where: { id: actor.businessId }, data: pick(input), select: businessSelect })
     await audit(tx, actor, 'business.updated', 'business', after.id, { fields, from: pick(before), to: pick(after) })
     return after

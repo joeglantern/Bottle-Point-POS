@@ -36,6 +36,8 @@ export function toSaleDTO(s: LoadedSale) {
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
     version: s.version,
+    clientId: s.clientId,
+    offlineRef: s.offlineRef,
     subtotalCents: s.subtotalCents,
     discountCents: s.discountCents,
     totalCents: s.totalCents,
@@ -63,6 +65,7 @@ export function toSaleDTO(s: LoadedSale) {
       phone: p.phone,
       verification: p.verification,
       receivedById: p.receivedById,
+      clientId: p.clientId,
       createdAt: p.createdAt
     })),
     mpesaRequests: s.mpesaRequests.map(r => ({
@@ -108,6 +111,13 @@ export type PaymentInput = {
   mpesaRequestId?: string | null
   receivedById: string
   shiftId?: string | null
+  // made on the till: a payment with the same clientId is never recorded twice
+  clientId?: string | null
+  // offline sync: when the money was actually taken (defaults to now)
+  at?: Date
+  // offline sync: the cash is already in that drawer, so record it against the
+  // shift even if the shift was closed meanwhile (the sync flags it)
+  allowClosedShift?: boolean
 }
 
 // Adds one payment to a sale. If the payments now cover the total, the sale
@@ -140,7 +150,8 @@ export async function applyPayment(tx: Tx, input: PaymentInput) {
   let shiftId = input.shiftId ?? null
   if (shiftId) {
     const rows = await tx.$queryRaw<{ closedAt: Date | null }[]>`SELECT "closedAt" FROM "Shift" WHERE id = ${shiftId} FOR SHARE`
-    if (!rows.length || rows[0]!.closedAt) {
+    const closed = !rows.length || !!rows[0]!.closedAt
+    if (closed && !(input.allowClosedShift && rows.length)) {
       if (input.method === 'CASH') throw unprocessable('Your shift was closed. Open a new shift to take cash.', 'shift_closed')
       shiftId = null
     }
@@ -162,7 +173,9 @@ export async function applyPayment(tx: Tx, input: PaymentInput) {
       verification: input.verification,
       mpesaRequestId: input.mpesaRequestId ?? null,
       receivedById: input.receivedById,
-      shiftId
+      shiftId,
+      clientId: input.clientId ?? null,
+      ...(input.at ? { createdAt: input.at } : {})
     }
   })
 
@@ -170,7 +183,7 @@ export async function applyPayment(tx: Tx, input: PaymentInput) {
   if (nowPaid) {
     await tx.sale.update({
       where: { id: sale.id },
-      data: { status: 'PAID', paidAt: new Date(), paidById: input.receivedById, version: { increment: 1 } }
+      data: { status: 'PAID', paidAt: input.at ?? new Date(), paidById: input.receivedById, version: { increment: 1 } }
     })
     // Stock leaves the shelf when the sale is paid.
     for (const l of sale.lines) {
@@ -180,7 +193,7 @@ export async function applyPayment(tx: Tx, input: PaymentInput) {
         update: { qty: { decrement: l.qty } }
       })
       await tx.stockMovement.create({
-        data: { branchId: sale.branchId, productId: l.productId, delta: -l.qty, reason: 'SALE', saleId: sale.id, userId: input.receivedById }
+        data: { branchId: sale.branchId, productId: l.productId, delta: -l.qty, reason: 'SALE', saleId: sale.id, userId: input.receivedById, ...(input.at ? { createdAt: input.at } : {}) }
       })
     }
   } else {

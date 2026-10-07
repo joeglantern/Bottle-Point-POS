@@ -93,10 +93,31 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
 
   // ---- live updates ----
   useLive('stock:updated', p => {
-    if (p.branchId !== branchId) return
+    if (p.branchId !== branchId || user?.trackStock === false) return
     products.setData(d => d && { ...d, products: d.products.map(x => (x.id === p.productId ? { ...x, qty: p.qty } : x)) })
   })
   useLive('product:updated', () => products.reload())
+  // offline sales reached the server: show the server's view, and if the sale
+  // on screen was one of them, carry on with its server copy
+  useEffect(() => {
+    const onSynced = () => {
+      products.reload()
+      unpaid.reload()
+      setCart(c => {
+        if (c.saleId && /^[0-9a-f-]{36}$/i.test(c.saleId) && !paying) {
+          api.get(`/sales/${c.saleId}`).then(r => {
+            if (r.sale && !r.sale.local) setCart(x => (x.saleId === c.saleId && linesKey(x.lines) === x.original ? cartFromSale(r.sale) : x))
+          }, () => {})
+        }
+        return c
+      })
+    }
+    window.addEventListener('bp:synced', onSynced)
+    // offline there are no live events: refresh after each sale saved on the till
+    const onLocal = () => { unpaid.reload(); products.reload() }
+    window.addEventListener('bp:outbox', onLocal)
+    return () => { window.removeEventListener('bp:synced', onSynced); window.removeEventListener('bp:outbox', onLocal) }
+  })
   useLive('sale:updated', ({ sale }) => {
     if (sale.branchId !== branchId) return
     unpaid.setData(d => {
@@ -135,7 +156,8 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
   const persist = async () => {
     const lines = cart.lines.map(l => ({ productId: l.productId, qty: l.qty }))
     if (!cart.saleId) {
-      const r = await api.post('/sales', { lines, label: cart.label || undefined, customerId: cart.customer?.id })
+      // the id is made here, so a retry or an offline sync can never make a second sale
+      const r = await api.post('/sales', { clientId: crypto.randomUUID(), lines, label: cart.label || undefined, customerId: cart.customer?.id, customerName: cart.customer?.name })
       return r.sale
     }
     let sale = null
@@ -144,7 +166,7 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
     const labelChanged = (opened?.label ?? '') !== cart.label
     const customerChanged = (opened?.customer?.id ?? null) !== (cart.customer?.id ?? null)
     if (labelChanged || customerChanged) {
-      sale = (await api.patch(`/sales/${cart.saleId}`, { label: cart.label || null, customerId: cart.customer?.id ?? null })).sale
+      sale = (await api.patch(`/sales/${cart.saleId}`, { label: cart.label || null, customerId: cart.customer?.id ?? null, customerName: cart.customer?.name ?? null })).sale
     }
     return sale ?? (await api.get(`/sales/${cart.saleId}`)).sale
   }
@@ -190,7 +212,7 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
       setLastScan({ code, label: 'receipt #' + receiptNo, at: Date.now() })
       try {
         const r = await api.get('/sales' + qs({ q: String(receiptNo), limit: 5 }))
-        const s = r.sales.find(x => x.number === receiptNo)
+        const s = r.sales.find(x => x.number === receiptNo || x.offlineRef === receiptNo)
         if (!s) return toast(`No sale #${receiptNo} in this branch.`, 'error')
         if (s.status === 'SAVED') return openSale(s)
         if (s.status === 'PAID' || s.status === 'REFUNDED') return setReceiptFor({ saleId: s.id, copy: true })

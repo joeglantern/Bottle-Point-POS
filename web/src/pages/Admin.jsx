@@ -30,10 +30,10 @@ export default function Admin({ initial = 'business' }) {
         ))}
       </div>
       <div className="admin-body">
-        {section === 'business' && <BusinessSection />}
+        {section === 'business' && <><BusinessSection /><StockSetting /></>}
         {section === 'mpesa' && <MpesaSection />}
         {section === 'billing' && <BillingSection />}
-        {section === 'devices' && <DevicesSection />}
+        {section === 'devices' && <><DevicesSection /><TillsSection /></>}
         {section === 'activity' && <ActivitySection />}
         {section === 'exports' && <ExportsSection />}
       </div>
@@ -394,6 +394,71 @@ function DevicesSection() {
           </tbody>
         </table>
       )}
+    </section>
+  )
+}
+
+// Browsers registered as tills. Each can sell without internet and send those
+// sales later with its own key. Remove a lost or retired one: anything it
+// still holds can then no longer be sent.
+function TillsSection() {
+  const res = useApi('/offline/devices')
+  const [run, busy] = useAction()
+  const list = (res.data?.devices ?? []).filter(d => !d.revokedAt)
+  const remove = d =>
+    window.confirm(`Remove till ${d.code}? It can no longer send sales made offline. Only do this for a lost or retired till.`) &&
+    run(async () => { await api.post(`/offline/devices/${d.id}/revoke`); res.reload() }, `Till ${d.code} removed`)
+  if (res.error && !res.data) return <ErrorNote error={res.error} onRetry={res.reload} />
+  if (!res.data) return <Loading />
+  return (
+    <section className="card">
+      <h4>Tills</h4>
+      <p className="muted small">Each browser used as a till gets a code (T1, T2...) the first time someone signs in on it. It keeps selling without internet and sends those sales when the connection is back. Receipts printed offline carry this code.</p>
+      {!list.length ? <Empty>No tills yet.</Empty> : (
+        <table className="cards-sm">
+          <thead><tr><th>Till</th><th>Set up by</th><th>Last synced</th><th>Since</th><th></th></tr></thead>
+          <tbody>
+            {list.map(d => (
+              <tr key={d.id}>
+                <td data-label="Till"><b>{d.code}</b>{d.name && <small className="muted block">{d.name}</small>}</td>
+                <td data-label="Set up by">{d.createdBy ?? ''}</td>
+                <td data-label="Last synced">{d.lastSeenAt ? ago(d.lastSeenAt) : 'Never'}</td>
+                <td data-label="Since">{dateOf(d.createdAt)}</td>
+                <td className="r"><button className="mini" disabled={busy} onClick={() => remove(d)}>Remove</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  )
+}
+
+// Whether the shop counts its bottles. Off suits a shop that has not counted
+// yet: the till shows no stock levels and nothing is ever out of stock. Sales
+// still record what was sold, so switching on later only needs one count.
+function StockSetting() {
+  const { user, refresh } = useSession()
+  const [run, busy] = useAction()
+  const on = user.trackStock !== false
+  const flip = () =>
+    run(async () => {
+      await api.patch('/admin/business', { trackStock: !on })
+      await refresh()
+    }, on ? 'Stock tracking switched off' : 'Stock tracking switched on')
+  return (
+    <section className="card">
+      <h4>Stock</h4>
+      <label className="toggle">
+        <input type="checkbox" checked={on} disabled={busy} onChange={flip} />
+        <span />
+        Track stock levels
+      </label>
+      <p className="muted small">
+        {on
+          ? 'The till shows how many of each product are left, warns when one runs low, and marks it out of stock at zero.'
+          : 'Off: the till shows no stock levels and never says out of stock. Sales still record what was sold. To switch on, count the shelves first (Inventory, Count), then switch this on.'}
+      </p>
     </section>
   )
 }

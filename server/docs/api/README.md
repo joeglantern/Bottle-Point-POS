@@ -29,6 +29,7 @@ Conventions: money is integer cents (`*Cents`), percentages are basis points (`*
 | M-Pesa STK push and typed code checks | `/api/mpesa` | [mpesa.md](mpesa.md) |
 | Shifts, approvals, reports, products, stock, customers, staff and branches | `/api/shifts`, `/api/approvals`, `/api/reports`, `/api/products`, `/api/stock`, `/api/customers`, `/api/admin` | The route files in `server/src/routes/` (each validates with a Zod schema at the top) |
 | Owner settings and billing | `/api/admin/...` | [settings.md](settings.md) |
+| Offline tills: registering, syncing, issues | `/api/offline` | [../../../docs/offline.md](../../../docs/offline.md#api) |
 | Live updates | `/socket.io` | [../../../docs/architecture.md](../../../docs/architecture.md#live-updates) |
 
 ### Sign in

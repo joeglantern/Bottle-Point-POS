@@ -5,7 +5,9 @@ import { Bottle, Empty, ErrorNote, Field, Loading, Modal, MoneyInput, dateOf, ks
 import { useBarcodeScanner } from '../scanner.js'
 
 export default function Inventory() {
-  const { branchId, branch } = useSession()
+  const { branchId, branch, user } = useSession()
+  // the shop does not count its bottles (Settings, Business): no levels or alerts
+  const tracked = user?.trackStock !== false
   const [cat, setCat] = useState('All')
   const [lowOnly, setLowOnly] = useState(false)
   const [q, setQ] = useState('')
@@ -50,7 +52,7 @@ export default function Inventory() {
         </div>
         <div className="chips">
           {categories.map(c => <button key={c} className={c === cat ? 'on' : ''} onClick={() => setCat(c)}>{c}</button>)}
-          <label className="toggle"><input type="checkbox" checked={lowOnly} onChange={e => setLowOnly(e.target.checked)} /><span />Low stock only</label>
+          {tracked && <label className="toggle"><input type="checkbox" checked={lowOnly} onChange={e => setLowOnly(e.target.checked)} /><span />Low stock only</label>}
         </div>
         <ErrorNote error={res.error} onRetry={res.reload} />
         {res.loading && !res.data ? <Loading /> : !shown.length ? <Empty>Nothing here.</Empty> : (
@@ -61,7 +63,7 @@ export default function Inventory() {
                 <div className="p-info">
                   <b>{r.name}</b>
                   <small>{r.barcode ? 'Barcode ' + r.barcode : 'No barcode'}</small>
-                  <div className="inv-row">{r.qty <= 0 ? <span className="tag cancelled">Out of stock</span> : r.low ? <span className="tag saved">Low: {r.qty}</span> : <span className="tag ok">In stock: {r.qty}</span>}</div>
+                  {tracked && <div className="inv-row">{r.qty <= 0 ? <span className="tag cancelled">Out of stock</span> : r.low ? <span className="tag saved">Low: {r.qty}</span> : <span className="tag ok">In stock: {r.qty}</span>}</div>}
                   <span className="price">{ksh(r.priceCents)}</span>
                   <div className="inv-actions">
                     <button className="mini" onClick={() => setModal({ kind: 'count', item: r })}>Count</button>
@@ -76,14 +78,18 @@ export default function Inventory() {
       </section>
       <aside className="order">
         <h3 className="title-serif sm">Stock</h3>
-        <div className="stock-sum">
-          <div><small>Units on hand</small><b>{units}</b></div>
-          <div><small>Retail value</small><b>{ksh(value)}</b></div>
-        </div>
+        {tracked ? (
+          <div className="stock-sum">
+            <div><small>Units on hand</small><b>{units}</b></div>
+            <div><small>Retail value</small><b>{ksh(value)}</b></div>
+          </div>
+        ) : (
+          <p className="muted small">Stock levels are switched off, so nothing shows as out of stock. When the shelves have been counted (Count on each product), the owner switches tracking on in Settings, Business.</p>
+        )}
         <button className="gold" onClick={() => setModal({ kind: 'receive' })}>Receive delivery</button>
         <button className="outline" onClick={() => setModal({ kind: 'product', item: null })}>Add product</button>
         <p className="muted small scan-tip">Tip: scan a bottle here to add it, or to open it if it is already in stock.</p>
-        <div className="unpaid">
+        {tracked && <div className="unpaid">
           <h4>Low stock alerts <span className="badge">{low.length}</span></h4>
           {low.map(p => (
             <div key={p.productId} className="u-row">
@@ -92,7 +98,7 @@ export default function Inventory() {
             </div>
           ))}
           {!low.length && <p className="muted small">Everything is above its reorder level.</p>}
-        </div>
+        </div>}
       </aside>
       {modal?.kind === 'receive' && <Receive rows={rows} first={modal.item} onClose={() => setModal(null)} onDone={done} />}
       {modal?.kind === 'count' && <Count item={modal.item} onClose={() => setModal(null)} onDone={done} />}

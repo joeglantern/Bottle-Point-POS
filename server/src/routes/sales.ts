@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { prisma, type Prisma } from '../db.js'
+import { prisma, Prisma } from '../db.js'
 import { branchFor, type AppEnv } from '../middleware/auth.js'
 import { AppError, notFound, unprocessable } from '../lib/errors.js'
 import { body, id, mpesaCode, phone, positiveCents, query } from '../lib/validate.js'
@@ -39,7 +39,14 @@ const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100)
 })
 
+// made by the till; sending the same one again returns the first result
+const clientId = z.uuid()
+
+const isUniqueOn = (err: unknown, field: string) =>
+  err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && JSON.stringify(err.meta ?? {}).includes(field)
+
 const createBody = z.object({
+  clientId: clientId.optional(),
   lines: z.array(lineInput).min(1, 'Add at least one item').max(200),
   label: label.nullish(),
   customerId: id.nullish()
@@ -54,8 +61,8 @@ const patchBody = z
   .object({ label: label.nullable().optional(), customerId: id.nullable().optional() })
   .refine(b => b.label !== undefined || b.customerId !== undefined, 'Nothing to change')
 
-const cashItem = z.object({ method: z.literal('CASH'), amountCents: positiveCents, tenderedCents: positiveCents.optional() })
-const mpesaItem = z.object({ method: z.literal('MPESA'), amountCents: positiveCents, mpesaRef: mpesaCode, phone: phone.optional() })
+const cashItem = z.object({ method: z.literal('CASH'), amountCents: positiveCents, tenderedCents: positiveCents.optional(), clientId: clientId.optional() })
+const mpesaItem = z.object({ method: z.literal('MPESA'), amountCents: positiveCents, mpesaRef: mpesaCode, phone: phone.optional(), clientId: clientId.optional() })
 const payBody = z.object({ payments: z.array(z.discriminatedUnion('method', [cashItem, mpesaItem])).min(1).max(4) })
 
 const notEditable = (s: { number: number; status: string }) =>
@@ -72,7 +79,7 @@ salesRoutes.get('/', async c => {
     where.createdAt = { gte: start, lt: new Date(start.getTime() + DAY_MS) }
   }
   if (q.q) {
-    const or: Prisma.SaleWhereInput[] = [{ label: { contains: q.q, mode: 'insensitive' } }]
+    const or: Prisma.SaleWhereInput[] = [{ label: { contains: q.q, mode: 'insensitive' } }, { offlineRef: q.q.toUpperCase() }]
     const m = /^#?(\d{1,9})$/.exec(q.q)
     if (m) or.push({ number: Number(m[1]) })
     where.OR = or
@@ -87,6 +94,17 @@ salesRoutes.post('/', async c => {
   const b = await body(c, createBody)
   const branchId = branchFor(c)
   const merged = mergeLines(b.lines)
+
+  // the same sale sent again (a reply lost on a weak connection): return it
+  const already = async () => {
+    if (!b.clientId) return null
+    const s = await prisma.sale.findUnique({ where: { clientId: b.clientId }, select: { id: true, branchId: true } })
+    if (!s) return null
+    if (!actor.branchIds.includes(s.branchId)) throw notFound('Sale')
+    return s.id
+  }
+  const existing = await already()
+  if (existing) return c.json({ sale: toSaleDTO(await loadSale(prisma, existing)) })
 
   const saleId = await prisma.$transaction(async tx => {
     const lines = await priceLines(tx, actor.businessId, merged)
@@ -105,11 +123,19 @@ salesRoutes.post('/', async c => {
         status: 'SAVED',
         subtotalCents: subtotal,
         totalCents: subtotal,
+        clientId: b.clientId ?? null,
         lines: { create: lines }
       }
     })
     await audit(tx, actor, 'sale.create', 'sale', sale.id, { number, totalCents: subtotal, lines: lines.length }, branchId)
     return sale.id
+  }).catch(async err => {
+    // two copies of the same request at the same moment: the first one won
+    if (isUniqueOn(err, 'clientId')) {
+      const id = await already()
+      if (id) return id
+    }
+    throw err
   })
 
   const sale = await emitSale(saleId)
@@ -195,6 +221,22 @@ salesRoutes.post('/:id/pay', async c => {
   const codes = b.payments.flatMap(p => (p.method === 'MPESA' ? [p.mpesaRef] : []))
   if (new Set(codes).size !== codes.length) throw unprocessable('The same M-Pesa code was entered twice.', 'mpesa_code_repeated')
 
+  // the same payment sent again: answer as the first time, record nothing
+  const ids = b.payments.flatMap(p => (p.clientId ? [p.clientId] : []))
+  if (new Set(ids).size !== ids.length) throw unprocessable('Each payment needs its own id.', 'payment_id_repeated')
+  const replay = async () => {
+    if (!ids.length) return null
+    const found = await prisma.payment.findMany({ where: { clientId: { in: ids } }, select: { saleId: true } })
+    if (!found.length) return null
+    if (found.length !== ids.length || found.some(f => f.saleId !== saleId)) {
+      throw unprocessable('These payments do not match this sale.', 'payment_id_mismatch')
+    }
+    const changeCents = b.payments.reduce((a, p) => a + (p.method === 'CASH' && p.tenderedCents != null ? p.tenderedCents - p.amountCents : 0), 0)
+    return c.json({ sale: toSaleDTO(await loadSale(prisma, saleId)), changeCents })
+  }
+  const earlier = await replay()
+  if (earlier) return earlier
+
   const result = await prisma.$transaction(async tx => {
     await lockSale(tx, saleId)
     const sale = await loadSale(tx, saleId)
@@ -216,7 +258,7 @@ salesRoutes.post('/:id/pay', async c => {
       const r = await applyPayment(
         tx,
         p.method === 'CASH'
-          ? { saleId, method: 'CASH', amountCents: p.amountCents, tenderedCents: p.tenderedCents ?? null, verification: 'CASH', receivedById: actor.id, shiftId: shift!.id }
+          ? { saleId, method: 'CASH', amountCents: p.amountCents, tenderedCents: p.tenderedCents ?? null, verification: 'CASH', receivedById: actor.id, shiftId: shift!.id, clientId: p.clientId ?? null }
           : {
               saleId,
               method: 'MPESA',
@@ -225,7 +267,8 @@ salesRoutes.post('/:id/pay', async c => {
               phone: p.phone ?? null,
               verification: 'MANUAL_UNVERIFIED',
               receivedById: actor.id,
-              shiftId: shift?.id ?? null
+              shiftId: shift?.id ?? null,
+              clientId: p.clientId ?? null
             }
       )
       paid = r.paid
@@ -241,7 +284,14 @@ salesRoutes.post('/:id/pay', async c => {
       sale.branchId
     )
     return { paid, productIds, branchId: sale.branchId }
+  }).catch(async err => {
+    if (isUniqueOn(err, 'clientId')) {
+      const r = await replay()
+      if (r) return r
+    }
+    throw err
   })
+  if (result instanceof Response) return result
 
   const changeCents = b.payments.reduce((a, p) => a + (p.method === 'CASH' && p.tenderedCents != null ? p.tenderedCents - p.amountCents : 0), 0)
   const sale = await emitSale(saleId)
@@ -291,6 +341,8 @@ salesRoutes.get('/:id/receipt', async c => {
     branchName: branch.name,
     saleId: sale.id,
     number: sale.number,
+    // printed on a receipt made without internet, before the sale had a number
+    offlineRef: sale.offlineRef,
     status: sale.status,
     label: sale.label,
     customer: sale.customer,

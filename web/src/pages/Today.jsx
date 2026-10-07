@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { api, qs } from '../api.js'
 import { useApi, useLive, useSession } from '../session.jsx'
-import { Empty, ErrorNote, Loading, Stat, ago, ksh, timeOf, todayNairobi, useAction } from '../ui.jsx'
+import { Empty, ErrorNote, Loading, ReasonModal, Stat, ago, ksh, timeOf, todayNairobi, useAction } from '../ui.jsx'
 
 export default function Today() {
   const { branchId, branch } = useSession()
@@ -30,6 +30,7 @@ export default function Today() {
       </div>
 
       <Approvals />
+      <OfflineChecks />
       <TypedCodes />
 
       <ErrorNote error={report.error} onRetry={report.reload} />
@@ -188,6 +189,49 @@ function TypedCodes() {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// Sales made while a till had no internet, with something a manager should
+// look at: cash after the shift was counted, a code already used, a tab paid
+// on two tills. The sale is always recorded; this is the follow up.
+function OfflineChecks() {
+  const { branchId } = useSession()
+  const res = useApi('/offline/issues' + qs({ branchId }), [branchId])
+  const [run, busy] = useAction()
+  const [closing, setClosing] = useState(null)
+  useLive('offline:issue', () => res.reload())
+  const list = res.data?.issues ?? []
+  if (!list.length) return null
+  const resolve = note =>
+    run(async () => {
+      await api.post(`/offline/issues/${closing.id}/resolve`, { note })
+      setClosing(null)
+      res.reload()
+    }, 'Marked as dealt with')
+  return (
+    <div className="card approvals">
+      <h4>Offline sales to check <span className="badge">{res.data.open}</span></h4>
+      <p className="muted small">These sales were made while a till had no internet. They are recorded; each one needs a quick look.</p>
+      {list.map(i => (
+        <div key={i.id} className="approval-row">
+          <span className="kind code">{i.deviceCode ?? 'Till'}</span>
+          <div className="a-main">
+            <b>{i.sale ? `Sale #${i.sale.number}${i.sale.offlineRef ? ` (${i.sale.offlineRef})` : ''}` : 'Shift'}</b>
+            <small className="muted">{i.message}</small>
+            <small className="muted">{ago(i.createdAt)}</small>
+          </div>
+          <div className="a-act">
+            <button className="mini on" disabled={busy} onClick={() => setClosing(i)}>Dealt with</button>
+          </div>
+        </div>
+      ))}
+      {closing && (
+        <ReasonModal title="What did you find?" eyebrow="Offline sale" label="Note" confirm="Mark as dealt with" busy={busy} onClose={() => setClosing(null)} onSubmit={resolve}>
+          <p className="muted small">{closing.message}</p>
+        </ReasonModal>
+      )}
     </div>
   )
 }

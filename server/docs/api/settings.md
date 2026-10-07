@@ -9,10 +9,10 @@ Paths under `/api/admin/billing` stay reachable when the business is suspended o
 ## Business details
 
 ### `GET /business` (MANAGER, OWNER)
--> `{ business: { id, name, legalName|null, email|null, phone|null, address|null, kraPin|null, receiptFooter|null, vatRateBps } }`
+-> `{ business: { id, name, legalName|null, email|null, phone|null, address|null, kraPin|null, receiptFooter|null, vatRateBps, trackStock } }`
 
 ### `PATCH /business`
-Any of: `name` (2 to 80), `legalName` (up to 120), `email`, `phone` (free text, up to 40), `address` (up to 200), `kraPin` (letter, 9 digits, letter; upper cased), `receiptFooter` (up to 200), `vatRateBps` (0 to 5000; 1600 = 16%, 0 = not VAT registered). An empty string clears a text field.
+Any of: `name` (2 to 80), `legalName` (up to 120), `email`, `phone` (free text, up to 40), `address` (up to 200), `kraPin` (letter, 9 digits, letter; upper cased), `receiptFooter` (up to 200), `vatRateBps` (0 to 5000; 1600 = 16%, 0 = not VAT registered), `trackStock` (boolean; off hides stock figures everywhere: products come back with `qty: null`, and `GET /api/session/me` returns `user.trackStock`). An empty string clears a text field.
 -> `{ business }`. Audit `business.updated` with the changed field names.
 
 Receipts (`GET /api/sales/:id/receipt`) include `business: { name, legalName, address, phone, email, kraPin, receiptFooter, vatRateBps }` and `vatCents`.

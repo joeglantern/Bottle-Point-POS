@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
-import { useSession } from '../session.jsx'
+import { useOnline, useSession } from '../session.jsx'
 import { Logo } from '../ui.jsx'
 
 // The username is remembered on this device so a till only needs the PIN.
@@ -10,7 +10,8 @@ const remembered = () => {
 }
 
 export default function Login({ themeBtn }) {
-  const { login } = useSession()
+  const { login, notice } = useSession()
+  const online = useOnline()
   const [shop, setShop] = useState({ loading: true, name: null, missing: false })
   const [username, setUsername] = useState(remembered)
   const [pin, setPin] = useState('')
@@ -115,6 +116,8 @@ export default function Login({ themeBtn }) {
       <div className="login-card">
         <h2>Sign in</h2>
         <p className="muted">{shop.name ? `Staff of ${shop.name}: your username and PIN.` : 'Your username and PIN.'}</p>
+        {notice && <p className="login-notice" role="status">{notice}</p>}
+        {!online && <p className="login-notice offline" role="status">No internet. Anyone who has signed in on this till in the last 14 days can still sign in and sell.</p>}
         <label className="field login-user">
           <span>Username</span>
           <input

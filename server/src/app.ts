@@ -19,6 +19,7 @@ import { customerRoutes } from './routes/customers.js'
 import { adminRoutes } from './routes/admin.js'
 import { settingsRoutes } from './routes/settings.js'
 import { consoleRoutes } from './routes/console/index.js'
+import { deviceSyncRoutes, offlineRoutes } from './routes/offline.js'
 
 export function createApp() {
   const app = new Hono<AppEnv>()
@@ -56,6 +57,10 @@ export function createApp() {
   // token in the URL and by matching the request we sent.
   app.route('/api/mpesa/callback', mpesaCallbackRoutes)
 
+  // Sales a till made without internet. The till signs this with its own key,
+  // so it works after the cashier's session has ended.
+  app.route('/api/offline/sync', deviceSyncRoutes)
+
   // The company console: platform staff only, separate sign in.
   app.route('/api/console', consoleRoutes)
 
@@ -71,6 +76,7 @@ export function createApp() {
   api.route('/customers', customerRoutes)
   api.route('/admin', adminRoutes)
   api.route('/admin', settingsRoutes)
+  api.route('/offline', offlineRoutes)
   app.route('/api', api)
 
   app.notFound(c => c.json({ error: { code: 'not_found', message: 'Not found.' } }, 404))

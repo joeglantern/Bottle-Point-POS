@@ -66,7 +66,8 @@ export default function PayModal({ sale: initial, shift, customerPhone, onPaid, 
 
   const pay = payments =>
     run(async () => {
-      const r = await api.post(`/sales/${sale.id}/pay`, { payments })
+      // each payment has its own id: sent twice (a weak connection), it is recorded once
+      const r = await api.post(`/sales/${sale.id}/pay`, { payments: payments.map(p => ({ ...p, clientId: crypto.randomUUID() })) })
       finish(r.sale)
       return r
     })

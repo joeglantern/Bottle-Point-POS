@@ -68,12 +68,16 @@ Everything a manager can do in every branch, plus:
 - **Branches:** compare every branch for any day, switch branch from the top bar.
 - **Staff:** add people with a username and PIN, change roles and branches, set a new PIN, switch someone off. Changes sign that person out everywhere at once.
 - **Settings:**
-  - **Business:** the name, registered name, phone, email, address, KRA PIN and receipt message printed on receipts, and the VAT rate (0 if you are not VAT registered).
+  - **Business:** the name, registered name, phone, email, address, KRA PIN and receipt message printed on receipts, and the VAT rate (0 if you are not VAT registered). **Track stock levels:** switch it off if the shop has not counted its bottles yet. The till then shows no stock levels and never says out of stock, but every sale is still recorded. When the shelves are counted (Inventory, Count on each product), switch it on.
   - **M-Pesa:** your own Paybill or Till and Daraja keys. **Test connection** checks them. Leave it switched off to keep the simulation while training.
   - **Billing:** your plan, what you have used of it, what you owe, and every invoice from Flarehub.
   - **Devices:** every phone, tablet and computer signed in. Sign out one you do not recognise.
   - **Activity:** everything that changed in the business, newest first. It cannot be edited.
   - **Exports:** sales, items sold, payments, stock and products as CSV for Excel or your accountant.
+
+## No internet
+
+Keep selling. Cash, typed M-Pesa codes, tabs, opening a shift and receipts all work, and everything is sent when the internet is back. M-Pesa prompts, discounts, refunds and closing a shift wait for the connection. Receipts printed offline carry the till's number, for example `T2-0041`. Anyone who signed in on the till with internet in the last 14 days can sign in offline. Full details, including what managers check afterwards: [Selling without internet](offline.md).
 
 ## If selling is paused
 

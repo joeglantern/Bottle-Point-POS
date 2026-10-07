@@ -7,6 +7,9 @@
 - **Sessions:** an `HttpOnly`, `Secure`, `SameSite=Strict` cookie, valid for 12 hours. Each address gets its own cookie, so a till session never reaches the console and the reverse. Switching a person off, changing their role or branches, or resetting their PIN or password ends their sessions at once.
 - Public sign up does not exist. Shop accounts are made by an owner or by the console. Console accounts are made by a super admin or the command line.
 
+- **Offline sign in:** a till keeps a PBKDF2 SHA-256 fingerprint (200,000 rounds, salted) of the PIN of each person who signed in on it with internet, never the PIN, for 14 days. Five wrong PINs lock offline sign in on that till for 5 minutes. Switched off staff are forgotten when the till is next online. See [offline.md](offline.md).
+- **Till keys:** each till has a random key for sending offline sales; the server keeps only its SHA-256 hash. The key works only for that shop's address and only for sending offline sales. Owners and managers remove a lost till in Settings, Devices. Offline sales by someone who never signed in on that till, or cash put into another person's shift, are flagged for a manager.
+
 ## Who can see what
 
 - Every API request is checked on the server for role, branch and business. Hiding a button is never the control.

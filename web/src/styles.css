@@ -1114,3 +1114,8 @@ table.cards-sm td.r, table.cards-sm th.r { text-align: right; }
 .scan-tip { margin: 0; }
 .modal .split-grid { align-items: start; }
 .offline-banner { background: rgba(222, 116, 102, .12); color: var(--red); }
+
+/* sign in: why you are here, and when there is no internet */
+.login-notice { margin: 4px 0 0; padding: 9px 12px; border-radius: var(--r-sm); font-size: 13px; background: rgba(201, 164, 92, .12); color: var(--gold-text); }
+.login-notice.offline { background: rgba(222, 116, 102, .1); color: var(--red); }
+.sync-banner { background: rgba(201, 164, 92, .1); color: var(--gold-text); }

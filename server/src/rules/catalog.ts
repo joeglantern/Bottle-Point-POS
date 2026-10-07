@@ -9,6 +9,8 @@ export const barcode = z.string().trim().regex(/^\d{6,14}$/, 'Barcode must be 6 
 // branches who has not picked one simply gets no stock figures.
 export function stockBranchFor(c: Context<AppEnv>): string | null {
   const actor = c.get('actor')
+  // a shop that does not count stock never sees stock figures
+  if (!actor.trackStock) return null
   const wanted = c.req.query('branchId') ?? c.req.header('x-branch-id')
   if (wanted || actor.branchIds.length === 1) return branchFor(c)
   return null

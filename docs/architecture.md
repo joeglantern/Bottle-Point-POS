@@ -77,9 +77,13 @@ One database holds every client. A client is a `Business` with a unique `slug` (
 - The billing run (`src/rules/billing.ts`) runs every hour and can be run by hand from the console. It ends trials, starts new periods, raises invoices (in advance, or after the period for share of sales), marks clients past due 7 days after the due date, and suspends them after 21 days. It is safe to run twice.
 - A suspended or cancelled shop can still sign in and see its billing page, but cannot sell. The till shows "Selling is paused".
 
+## Offline tills
+
+The till sells without internet: a service worker keeps the app, IndexedDB keeps the data, and requests the server cannot answer are answered on the till and queued. When the connection is back the till sends them with its own key to `POST /api/offline/sync`. Every sale, payment and shift carries an id made on the till, so nothing is recorded twice; sales are never refused once money changed hands, and anything unusual is flagged for a manager. Full design: [offline.md](offline.md).
+
 ## Live updates
 
-Socket.IO on the same origin. A socket is accepted only with a valid session on the right address, and joins a room per branch and per business. Events: `sale:updated`, `mpesa:updated`, `approval:updated`, `stock:updated`, `shift:updated`, `product:updated`. Payloads are the whole updated object, so a screen replaces what it has.
+Socket.IO on the same origin. A socket is accepted only with a valid session on the right address, and joins a room per branch and per business. Events: `sale:updated`, `mpesa:updated`, `approval:updated`, `stock:updated`, `shift:updated`, `product:updated`, `offline:issue`. Payloads are the whole updated object, so a screen replaces what it has.
 
 ## Code map
 

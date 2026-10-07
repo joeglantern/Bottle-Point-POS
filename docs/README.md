@@ -6,6 +6,7 @@ Bottle Point is a point of sale for wine and spirits shops and pubs in Kenya, ru
 |---|---|---|
 | [Shop guide](shop-guide.md) | Shop owners, managers, cashiers | Signing in, shifts, selling, M-Pesa, refunds, stock, reports, settings |
 | [Scanners and printers](hardware.md) | Whoever sets up a till | Which barcode scanners and receipt printers work, and how to set them up on each kind of device |
+| [Selling without internet](offline.md) | Everyone, and developers | What works offline, what managers check afterwards, and how syncing guarantees nothing is lost or recorded twice |
 | [Console guide](console-guide.md) | The Flarehub team | Onboarding a client, plans, billing, suspensions, the team, the audit log |
 | [Operations](operations.md) | Whoever runs the servers | Servers, deploying, a new client's address, backups and restore, secrets, logs, troubleshooting |
 | [Architecture](architecture.md) | Developers | How the parts fit together, the data model, money and tenancy rules, realtime |

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, qs } from './api.js'
-import { atLeast, useApi, useLive, useSession } from './session.jsx'
+import { atLeast, useApi, useLive, useOnline, useSession, useSyncState } from './session.jsx'
+import { exportUnsent } from './offline/outbox.js'
 import { Icon, Loading, Logo, Modal, ThemeButton, ksh, useTheme, useToast } from './ui.jsx'
 import Login from './pages/Login.jsx'
 import { OpenShift, ShiftModal } from './pages/Shift.jsx'
@@ -50,6 +51,13 @@ function Shell({ themeBtn }) {
     loadShift()
   }, [branchId])
   useLive('shift:updated', p => p.shift?.userId === user.id && loadShift())
+  // cash taken offline, or offline work reaching the server, moves the till figures
+  useEffect(() => {
+    const on = () => loadShift()
+    window.addEventListener('bp:outbox', on)
+    window.addEventListener('bp:synced', on)
+    return () => { window.removeEventListener('bp:outbox', on); window.removeEventListener('bp:synced', on) }
+  }, [branchId])
   // cash taken changes the live till figures
   useLive('sale:updated', p => p.sale.branchId === branchId && shift && loadShift())
 
@@ -130,6 +138,8 @@ function Shell({ themeBtn }) {
           </div>
         </header>
         <OfflineBanner connected={connected} />
+        <SyncBanner />
+        <UpdateBanner />
         <BillingBanner status={billing.data} onOpen={user.role === 'OWNER' ? () => setView('admin') : null} />
         <main>
           {view === 'till' && <Till key={branchId} shift={shift} attachCustomer={attach} onCustomerAttached={() => setAttach(null)} />}
@@ -176,28 +186,72 @@ function Shell({ themeBtn }) {
   )
 }
 
-// Tells the cashier plainly when the till cannot reach the server. Waits a few
-// seconds so a short blip does not flash a warning.
+// Tells the cashier plainly when the till cannot reach the server, and that
+// selling carries on. Waits a moment so a short blip does not flash a warning.
 function OfflineBanner({ connected }) {
-  const [online, setOnline] = useState(() => navigator.onLine)
+  const online = useOnline()
+  const { offline: signedInOffline } = useSession()
+  const { waiting } = useSyncState()
   const [show, setShow] = useState(false)
-  useEffect(() => {
-    const up = () => setOnline(true)
-    const down = () => setOnline(false)
-    window.addEventListener('online', up)
-    window.addEventListener('offline', down)
-    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
-  }, [])
-  const lost = !online || !connected
+  const lost = !online || (!connected && !signedInOffline) || signedInOffline
   useEffect(() => {
     if (!lost) { setShow(false); return }
-    const t = setTimeout(() => setShow(true), online ? 8000 : 2000)
+    const t = setTimeout(() => setShow(true), online && !signedInOffline ? 8000 : 1500)
     return () => clearTimeout(t)
-  }, [lost, online])
+  }, [lost, online, signedInOffline])
   if (!show) return null
   return (
-    <div className="billing-banner offline-banner" role="alert">
-      <span><b>No connection.</b> Sales cannot be saved or paid until the internet is back. Note orders on paper and enter them when it returns.</span>
+    <div className="billing-banner offline-banner" role="status">
+      <span>
+        <b>Offline.</b> Keep selling: cash and typed M-Pesa codes are saved on this till and sent when the internet is back.
+        {' '}M-Pesa prompts, discounts, refunds and closing the shift wait for the connection.
+        {waiting > 0 && <> <b>{waiting} waiting to send.</b></>}
+      </span>
+    </div>
+  )
+}
+
+// Offline work on its way to the server, or anything the server refused.
+function SyncBanner() {
+  const online = useOnline()
+  const { waiting, refused, problem } = useSyncState()
+  const download = async () => {
+    const data = await exportUnsent()
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `bottle-point-unsent-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  }
+  if (problem || refused) {
+    return (
+      <div className="billing-banner offline-banner" role="alert">
+        <span><b>{problem ?? `${refused} offline item${refused === 1 ? '' : 's'} could not be sent.`}</b> Nothing is lost: download them and give the file to the owner.</span>
+        <button className="mini" onClick={download}>Download</button>
+      </div>
+    )
+  }
+  if (online && waiting > 0) {
+    return <div className="billing-banner sync-banner" role="status"><span>Sending {waiting} offline sale{waiting === 1 ? '' : 's'} to the server...</span></div>
+  }
+  return null
+}
+
+// A new version of Bottle Point was deployed. It loads when the cashier
+// chooses, never in the middle of a sale.
+function UpdateBanner() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    const on = () => setReady(true)
+    window.addEventListener('bp:update-ready', on)
+    return () => window.removeEventListener('bp:update-ready', on)
+  }, [])
+  if (!ready) return null
+  return (
+    <div className="billing-banner sync-banner" role="status">
+      <span>A new version of Bottle Point is ready.</span>
+      <button className="mini" onClick={() => window.bpApplyUpdate?.()}>Reload now</button>
     </div>
   )
 }

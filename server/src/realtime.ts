@@ -11,7 +11,8 @@ export const Events = {
   approvalUpdated: 'approval:updated', // { approval }
   stockUpdated: 'stock:updated', // { branchId, productId, qty }
   shiftUpdated: 'shift:updated', // { shift }
-  productUpdated: 'product:updated' // { product }
+  productUpdated: 'product:updated', // { product }
+  offlineIssue: 'offline:issue' // { count } new things to check from an offline sync
 } as const
 
 let io: Server | null = null

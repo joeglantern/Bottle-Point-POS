@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api } from '../api.js'
-import { useSession } from '../session.jsx'
+import { useOnline, useSession, useSyncState } from '../session.jsx'
 import { Field, Modal, MoneyInput, ksh, timeOf, useAction } from '../ui.jsx'
 
 export function OpenShift({ onOpened, onSkip, canSkip }) {
@@ -46,6 +46,8 @@ export function ShiftModal({ shift, onClose, onClosed }) {
   const [note, setNote] = useState('')
   const [run, busy] = useAction()
   const variance = counted == null ? null : counted - shift.expectedCashCents
+  const online = useOnline()
+  const { waiting } = useSyncState()
 
   const close = () =>
     run(async () => {
@@ -73,7 +75,9 @@ export function ShiftModal({ shift, onClose, onClosed }) {
       <Field label="Note (optional)">
         <input className="label-in" value={note} onChange={e => setNote(e.target.value)} placeholder="Anything the manager should know" />
       </Field>
-      <button className="gold wide" disabled={busy || counted == null} onClick={close}>Close shift</button>
+      {waiting > 0 && <p className="warn-note">{waiting} offline sale{waiting === 1 ? ' is' : 's are'} still being sent. Close the shift once they are in, so the count includes them.</p>}
+      {!online && <p className="warn-note">Closing a shift needs the internet, so the count includes every sale.</p>}
+      <button className="gold wide" disabled={busy || counted == null || waiting > 0 || !online} onClick={close}>Close shift</button>
     </Modal>
   )
 }

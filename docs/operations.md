@@ -65,6 +65,18 @@ Options: `DEPLOY_REF=<commit>` ships an older commit. `FRESH=yes-delete-all-data
 
 To force it straight away: `ssh kiptoo 'bash ~/apps/bottle-point/sites.sh'`. If Caddy rejects the file, the script restores the previous one and Caddy keeps serving everything as before.
 
+### Loading a client's product list
+
+From a price list turned into JSON (`[{ "name", "category", "sizeMl", "priceCents", "barcode"? }]`). Products with the same name and size as an existing one are skipped, so it is safe to run twice. Always run with `--dry-run` first.
+
+```
+scp products.json kiptoo:/tmp/products.json
+ssh kiptoo 'cd ~/apps/bottle-point && docker compose exec -T api npx tsx scripts/import-products.ts --shop <address> --dry-run < /tmp/products.json'
+ssh kiptoo 'cd ~/apps/bottle-point && docker compose exec -T api npx tsx scripts/import-products.ts --shop <address> < /tmp/products.json && rm /tmp/products.json'
+```
+
+New products start with no stock. A shop that has not counted yet can switch off stock levels (Settings, Business).
+
 ## Console users
 
 The first super admin exists already. To add one from the server (prints a generated password once):
@@ -139,4 +151,6 @@ To switch the server-wide fallback from simulation to a real account, set `MPESA
 | Everything shows "Selling is paused" | The client is suspended or cancelled. See the client in the console. |
 | Live updates stop (unpaid list, M-Pesa status) | The green dot at the top of the till turns red when the socket drops. Check `docker compose logs api`. Caddy and nginx both pass WebSockets through. |
 | The server ran out of disk | `docker system df`, old backups in `backups/`, old releases are pruned automatically. |
+| A till says offline sales could not be sent | The till was removed in Settings, Devices, or its data was cleared. Ask the shop for the downloaded file. Each item in it is a `POST /api/offline/sync` op. |
+| Offline sales are waiting on a till that is online | Open the till: it sends every 20 seconds. `docker compose logs api` shows `offline sync` errors, if any. |
 | The CRM is affected | Bottle Point only owns `bottle-point.caddy`. Remove it and reload Caddy: `rm ~/flare-crm/infra/docker/caddy/conf.d/bottle-point.caddy && docker exec crm-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile` |

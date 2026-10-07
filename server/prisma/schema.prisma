@@ -91,6 +91,9 @@ model Business {
   // VAT in basis points: 1600 = 16%
   vatRateBps    Int     @default(1600)
   currency      String  @default("KES")
+  // off: the shop does not count bottles. Sales still record what was sold,
+  // but the till shows no stock levels and nothing is ever "out of stock".
+  trackStock    Boolean @default(true)
 
   branches     Branch[]
   users        User[]
@@ -100,6 +103,7 @@ model Business {
   subscription Subscription?
   invoices     Invoice[]
   notes        TenantNote[]
+  devices      Device[]
 }
 
 // ---------- Per business M-Pesa (each shop has its own Paybill or Till) ----------
@@ -483,6 +487,8 @@ model Shift {
   countedCashCents  Int?
   varianceCents     Int?
   closeNote         String?
+  // set when the shift was opened on a till without internet
+  clientId          String?   @unique
 
   branch   Branch    @relation(fields: [branchId], references: [id])
   payments Payment[]
@@ -511,6 +517,12 @@ model Sale {
   refundedAt    DateTime?
   // optimistic concurrency: bumped on every change to lines or status
   version       Int        @default(0)
+  // made on the till, so a retry or an offline sync never makes a second sale
+  clientId      String?    @unique
+  // offline sales: the till that made it and the number on its printed receipt (T2-0041)
+  deviceId      String?
+  offlineRef    String?
+  syncedAt      DateTime?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -523,6 +535,7 @@ model Sale {
   refunds       Refund[]
 
   @@unique([branchId, number])
+  @@unique([deviceId, offlineRef])
   @@index([branchId, status, createdAt])
 }
 
@@ -557,6 +570,8 @@ model Payment {
   shiftId        String?
   verifiedById   String?
   verifiedAt     DateTime?
+  // made on the till, so a retry or an offline sync never records it twice
+  clientId       String?             @unique
   createdAt      DateTime            @default(now())
 
   sale         Sale          @relation(fields: [saleId], references: [id])
@@ -647,4 +662,71 @@ model AuditLog {
 
   @@index([branchId, at])
   @@index([entity, entityId])
+}
+
+// ---------- Offline tills ----------
+
+// A browser registered as a till. It syncs sales made without internet using
+// its own key, so they upload even after the cashier's session has ended.
+model Device {
+  id          String    @id @default(cuid())
+  businessId  String
+  // short code printed on offline receipts: T1, T2, ...
+  code        String
+  name        String?
+  // sha256 of the key; the key itself is only ever on the till
+  tokenHash   String    @unique
+  createdById String
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime?
+  revokedAt   DateTime?
+
+  business Business @relation(fields: [businessId], references: [id])
+
+  @@unique([businessId, code])
+}
+
+// Who has signed in with internet on each till. Offline sales are expected to
+// be made by these people; anyone else is flagged for a manager.
+model DeviceUser {
+  deviceId    String
+  userId      String
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@id([deviceId, userId])
+}
+
+// Every item a till synced, with the answer it got. A till that sends the same
+// item again (lost reply, two tabs) gets the same answer and nothing is redone.
+model OfflineOp {
+  opId        String   @id
+  deviceId    String
+  kind        String
+  // a shift opened offline that was merged into one already open on the server
+  refClientId String?  @unique
+  refId       String?
+  result      Json
+  createdAt   DateTime @default(now())
+
+  @@index([deviceId, createdAt])
+}
+
+// Something about an offline sale a manager should look at. Synced sales are
+// never refused once money changed hands; anything unusual lands here.
+model OfflineIssue {
+  id           String    @id @default(cuid())
+  businessId   String
+  branchId     String
+  deviceId     String?
+  saleId       String?
+  kind         String
+  message      String
+  data         Json?
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolveNote  String?
+
+  @@index([branchId, resolvedAt, createdAt])
 }
