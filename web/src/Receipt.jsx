@@ -118,9 +118,9 @@ export function ReceiptPaper({ r }) {
             <div key={i}>
               <div className="rc-row"><span>M-Pesa</span><span>{money(p.amountCents)}</span></div>
               <div className="rc-sub">
-                <span className="rc-code">{p.mpesaRef}</span>
+                {p.mpesaRef && <span className="rc-code">{p.mpesaRef}</span>}
                 {p.phone && <span>{maskPhone(p.phone)}</span>}
-                <span>{p.verification === 'STK_CONFIRMED' ? 'Confirmed by M-Pesa' : 'Code entered at till'}</span>
+                <span>{p.verification === 'STK_CONFIRMED' ? 'Confirmed by M-Pesa' : p.mpesaRef ? 'Code entered at till' : 'Received at till'}</span>
               </div>
             </div>
           )

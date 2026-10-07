@@ -301,7 +301,11 @@ async function takePayments(ctx, r, items) {
   const total = sum(items, p => Number(p.amountCents) || 0)
   if (!dto.lines.length || dto.totalCents <= 0) throw refuse('Add items before taking payment.', 'sale_empty')
   if (total > due) throw refuse(`Only KSh ${due / 100} is still due on this sale.`, 'overpayment')
-  const codes = items.filter(p => p.method === 'MPESA').map(p => p.mpesaRef)
+  const me = await kvGet('me:current')
+  if (me?.user?.requireMpesaCode !== false && items.some(p => p.method === 'MPESA' && !p.mpesaRef)) {
+    throw refuse("Type the M-Pesa code from the customer's message.", 'mpesa_code_required')
+  }
+  const codes = items.filter(p => p.method === 'MPESA' && p.mpesaRef).map(p => p.mpesaRef)
   if (new Set(codes).size !== codes.length) throw refuse('The same M-Pesa code was entered twice.', 'mpesa_code_repeated')
   for (const c of codes) {
     if (!CODE.test(c ?? '')) throw refuse('M-Pesa code must be 10 letters or digits.')

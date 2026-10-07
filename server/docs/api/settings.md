@@ -12,7 +12,7 @@ Paths under `/api/admin/billing` stay reachable when the business is suspended o
 -> `{ business: { id, name, legalName|null, email|null, phone|null, address|null, kraPin|null, receiptFooter|null, vatRateBps, trackStock } }`
 
 ### `PATCH /business`
-Any of: `name` (2 to 80), `legalName` (up to 120), `email`, `phone` (free text, up to 40), `address` (up to 200), `kraPin` (letter, 9 digits, letter; upper cased), `receiptFooter` (up to 200), `vatRateBps` (0 to 5000; 1600 = 16%, 0 = not VAT registered), `trackStock` (boolean; off hides stock figures everywhere: products come back with `qty: null`, and `GET /api/session/me` returns `user.trackStock`). An empty string clears a text field.
+Any of: `name` (2 to 80), `legalName` (up to 120), `email`, `phone` (free text, up to 40), `address` (up to 200), `kraPin` (letter, 9 digits, letter; upper cased), `receiptFooter` (up to 200), `vatRateBps` (0 to 5000; 1600 = 16%, 0 = not VAT registered), `trackStock` (boolean; off hides stock figures everywhere: products come back with `qty: null`, and `GET /api/session/me` returns `user.trackStock`. On, selling more than is in stock answers 422 `out_of_stock`, checked when items are added and again, under a lock, when the sale is paid), `requireMpesaCode` (boolean; off lets `POST /api/sales/:id/pay` take an `MPESA` payment without `mpesaRef`; on, that answers 422 `mpesa_code_required`). An empty string clears a text field.
 -> `{ business }`. Audit `business.updated` with the changed field names.
 
 Receipts (`GET /api/sales/:id/receipt`) include `business: { name, legalName, address, phone, email, kraPin, receiptFooter, vatRateBps }` and `vatCents`.

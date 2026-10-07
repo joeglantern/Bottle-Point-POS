@@ -175,10 +175,10 @@ function TypedCodes() {
   return (
     <div className="card approvals">
       <h4>Typed M-Pesa codes to check <span className="badge">{list.length}</span></h4>
-      <p className="muted small">Find each code on the M-Pesa statement or portal before marking it checked.</p>
+      <p className="muted small">Find each one on the M-Pesa statement or portal before marking it checked: by its code, or by amount and time when no code was typed.</p>
       {list.map(p => (
         <div key={p.id} className="approval-row">
-          <span className="kind code">{p.mpesaRef}</span>
+          <span className="kind code">{p.mpesaRef ?? 'No code'}</span>
           <div className="a-main">
             <b>Sale #{p.saleNumber} {'·'} {ksh(p.amountCents)}</b>
             <small className="muted">Typed by {p.receivedByName}, {ago(p.createdAt)}</small>

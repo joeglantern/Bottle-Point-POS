@@ -10,6 +10,7 @@ import { audit } from '../lib/audit.js'
 import { darajaFor, rememberCheckout } from '../lib/daraja.js'
 import { emitToBranch, Events } from '../realtime.js'
 import { emitSale, lockSale, openShift } from '../rules/sale-core.js'
+import { assertInStock } from '../rules/sales.js'
 import {
   handleStkCallback,
   queryMpesaRequest,
@@ -70,7 +71,7 @@ mpesaRoutes.post('/stk', async c => {
     await lockSale(tx, input.saleId)
     const sale = await tx.sale.findUniqueOrThrow({
       where: { id: input.saleId },
-      include: { payments: { select: { amountCents: true } }, lines: { select: { id: true } } }
+      include: { payments: { select: { amountCents: true } }, lines: { select: { id: true, productId: true, qty: true } } }
     })
     if (sale.status !== 'SAVED' && sale.status !== 'OPEN') {
       throw unprocessable(`Sale #${sale.number} is ${sale.status.toLowerCase()} and cannot take payments.`, 'sale_not_payable')
@@ -81,6 +82,8 @@ mpesaRoutes.post('/stk', async c => {
     const amount = input.amountCents ?? due
     if (amount <= 0) throw unprocessable('Amount must be more than zero.', 'bad_amount')
     if (amount > due) throw unprocessable(`Only KSh ${due / 100} is still due on this sale.`, 'overpayment')
+    // the prompt pays the rest: the bottles must be on the shelf
+    if (actor.trackStock && amount >= due) await assertInStock(tx, sale.branchId, new Map(sale.lines.map(l => [l.productId, l.qty])))
     if (amount % 100 !== 0) {
       throw unprocessable('M-Pesa takes whole shillings only. Enter an amount without cents.', 'whole_shillings')
     }

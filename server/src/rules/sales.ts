@@ -65,3 +65,26 @@ export async function saleForActor(db: Db, actor: Actor, saleId: string) {
 
 export const EDITABLE = ['SAVED', 'OPEN'] as const
 export const isEditable = (status: string) => (EDITABLE as readonly string[]).includes(status)
+
+// For shops that track stock: refuse to sell more of a product than the branch
+// has. With lock, the stock rows stay locked until the transaction ends, so two
+// tills cannot both sell the last bottle. Shops that do not track stock, and
+// sales synced from an offline till (the bottle has already gone), skip this.
+export async function assertInStock(db: Db, branchId: string, wanted: Map<string, number>, lock = false) {
+  const ids = [...wanted.keys()]
+  if (!ids.length) return
+  if (lock) await (db as any).$queryRaw`SELECT 1 FROM "Stock" WHERE "branchId" = ${branchId} AND "productId" = ANY(${ids}) FOR UPDATE`
+  const [rows, products] = await Promise.all([
+    db.stock.findMany({ where: { branchId, productId: { in: ids } } }),
+    db.product.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+  ])
+  const have = new Map(rows.map(r => [r.productId, r.qty]))
+  const names = new Map(products.map(p => [p.id, p.name]))
+  const short = ids
+    .map(id => ({ id, want: wanted.get(id)!, left: Math.max(0, have.get(id) ?? 0), name: names.get(id) ?? 'A product' }))
+    .filter(x => x.want > x.left)
+  if (!short.length) return
+  const words = short.map(x => (x.left === 0 ? `${x.name} is out of stock` : `only ${x.left} ${x.name} left`))
+  const msg = words.join(', ')
+  throw new AppError(422, 'out_of_stock', msg.charAt(0).toUpperCase() + msg.slice(1) + '.', { products: short.map(x => ({ productId: x.id, left: x.left, wanted: x.want })) })
+}

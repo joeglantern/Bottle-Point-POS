@@ -16,6 +16,8 @@ export type Actor = {
   subscriptionStatus: SubscriptionStatus | null
   // whether the shop counts its stock (Settings, Business)
   trackStock: boolean
+  // whether an M-Pesa payment needs its transaction code (Settings, Business)
+  requireMpesaCode: boolean
 }
 
 export type AppEnv = { Variables: { actor: Actor } }
@@ -26,7 +28,7 @@ export const atLeast = (actor: Actor, role: Role) => RANK[actor.role] >= RANK[ro
 export async function loadActor(userId: string): Promise<Actor | null> {
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    include: { branches: true, business: { select: { trackStock: true, subscription: { select: { status: true } } } } }
+    include: { branches: true, business: { select: { trackStock: true, requireMpesaCode: true, subscription: { select: { status: true } } } } }
   })
   if (!u || !u.active || !u.businessId) return null
   let branchIds = u.branches.map(b => b.branchId)
@@ -42,7 +44,8 @@ export async function loadActor(userId: string): Promise<Actor | null> {
     businessId: u.businessId,
     branchIds,
     subscriptionStatus: u.business?.subscription?.status ?? null,
-    trackStock: u.business?.trackStock ?? true
+    trackStock: u.business?.trackStock ?? true,
+    requireMpesaCode: u.business?.requireMpesaCode ?? true
   }
 }
 

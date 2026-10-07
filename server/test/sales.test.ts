@@ -480,7 +480,6 @@ describe('pay', () => {
       { payments: [{ method: 'CASH', amountCents: 0 }] },
       { payments: [{ method: 'CASH', amountCents: 10.5 }] },
       { payments: [{ method: 'CASH', amountCents: -5 }] },
-      { payments: [{ method: 'MPESA', amountCents: 100 }] },
       { payments: [{ method: 'MPESA', amountCents: 100, mpesaRef: 'SHORT' }] },
       { payments: [{ method: 'MPESA', amountCents: 100, mpesaRef: 'ABC123456!' }] },
       { payments: [{ method: 'MPESA', amountCents: 100, mpesaRef: 'ABC1234567', phone: '12345' }] }
@@ -489,6 +488,10 @@ describe('pay', () => {
       const r = await cashier.post(`/api/sales/${s.id}/pay`, b)
       expect(r.status, JSON.stringify(b)).toBe(400)
     }
+    // no code at all: the shop requires one by default
+    const none = await cashier.post(`/api/sales/${s.id}/pay`, { payments: [{ method: 'MPESA', amountCents: 100 }] })
+    expect(none.status).toBe(422)
+    expect(none.body.error.code).toBe('mpesa_code_required')
   })
 
   it('cannot pay another branch sale, owner can by id, cancelled cannot be paid', async () => {

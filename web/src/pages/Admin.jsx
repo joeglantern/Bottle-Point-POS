@@ -30,7 +30,7 @@ export default function Admin({ initial = 'business' }) {
         ))}
       </div>
       <div className="admin-body">
-        {section === 'business' && <><BusinessSection /><StockSetting /></>}
+        {section === 'business' && <><BusinessSection /><StockSetting /><MpesaCodeSetting /></>}
         {section === 'mpesa' && <MpesaSection />}
         {section === 'billing' && <BillingSection />}
         {section === 'devices' && <><DevicesSection /><TillsSection /></>}
@@ -458,6 +458,35 @@ function StockSetting() {
         {on
           ? 'The till shows how many of each product are left, warns when one runs low, and marks it out of stock at zero.'
           : 'Off: the till shows no stock levels and never says out of stock. Sales still record what was sold. To switch on, count the shelves first (Inventory, Count), then switch this on.'}
+      </p>
+    </section>
+  )
+}
+
+// Whether an M-Pesa payment needs its transaction code at the till. Off suits a
+// shop whose M-Pesa is not connected: cashiers record M-Pesa by amount, and a
+// manager checks each one against the statement.
+function MpesaCodeSetting() {
+  const { user, refresh } = useSession()
+  const [run, busy] = useAction()
+  const on = user.requireMpesaCode !== false
+  const flip = () =>
+    run(async () => {
+      await api.patch('/admin/business', { requireMpesaCode: !on })
+      await refresh()
+    }, on ? 'M-Pesa code no longer required' : 'M-Pesa code required')
+  return (
+    <section className="card">
+      <h4>M-Pesa at the till</h4>
+      <label className="toggle">
+        <input type="checkbox" checked={on} disabled={busy} onChange={flip} />
+        <span />
+        Require the M-Pesa code
+      </label>
+      <p className="muted small">
+        {on
+          ? "Cashiers type the code from the customer's M-Pesa message for every M-Pesa payment (unless the prompt confirmed it)."
+          : 'Off: cashiers record an M-Pesa payment by its amount, and may type the code. Every one appears under Typed M-Pesa codes to check, so a manager can match it with the statement. Switch this on once M-Pesa is connected.'}
       </p>
     </section>
   )

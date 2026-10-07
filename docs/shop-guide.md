@@ -33,7 +33,7 @@ On a phone or a tablet held upright, the order is in the bar at the bottom: tap 
 |---|---|
 | **Cash** | Enter what the customer handed over (or tap Exact or a note). The change shows. Press **Confirm receipt of payment**. |
 | **M-Pesa prompt** | Appears once the owner has entered the shop's own Paybill or Till keys in Settings, M-Pesa. Enter the customer's phone number and **Send prompt**. The customer enters their M-Pesa PIN on their phone and the sale turns paid by itself. If nothing happens, **Check status**. If they cancel or it fails, **Send again** or use a typed code. |
-| **M-Pesa code** | The fallback. Type the 10 character code from the customer's M-Pesa message. A manager checks typed codes later. |
+| **M-Pesa code** | The fallback. Type the 10 character code from the customer's M-Pesa message. A manager checks typed codes later. If the owner switched off **Require the M-Pesa code** (Settings, Business), this tab is just **M-Pesa**: check the message, confirm the amount, and type the code only if you want to. A manager still checks each one against the statement. |
 | **Split** | Part cash, the rest by M-Pesa prompt or typed code. |
 
 A code can only be used once, ever. The receipt appears when the sale is paid.
@@ -68,7 +68,7 @@ Everything a manager can do in every branch, plus:
 - **Branches:** compare every branch for any day, switch branch from the top bar.
 - **Staff:** add people with a username and PIN, change roles and branches, set a new PIN, switch someone off. Changes sign that person out everywhere at once.
 - **Settings:**
-  - **Business:** the name, registered name, phone, email, address, KRA PIN and receipt message printed on receipts, and the VAT rate (0 if you are not VAT registered). **Track stock levels:** switch it off if the shop has not counted its bottles yet. The till then shows no stock levels and never says out of stock, but every sale is still recorded. When the shelves are counted (Inventory, Count on each product), switch it on.
+  - **Business:** the name, registered name, phone, email, address, KRA PIN and receipt message printed on receipts, and the VAT rate (0 if you are not VAT registered). **Track stock levels:** switch it off if the shop has not counted its bottles yet. The till then shows no stock levels and never says out of stock, but every sale is still recorded. When the shelves are counted (Inventory, Count on each product), switch it on. With tracking on, the till will not sell more of a product than is in stock (it says how many are left); a sale made while offline still goes through and is flagged for a count. **Require the M-Pesa code:** switch it off while your M-Pesa is not connected, so cashiers can record M-Pesa by amount.
   - **M-Pesa:** your own Paybill or Till and Daraja keys. **Test connection** checks them. Leave it switched off to keep the simulation while training.
   - **Billing:** your plan, what you have used of it, what you owe, and every invoice from Flarehub.
   - **Devices:** every phone, tablet and computer signed in. Sign out one you do not recognise.

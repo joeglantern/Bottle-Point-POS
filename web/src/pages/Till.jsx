@@ -138,7 +138,20 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
   })
 
   // ---- cart ----
+  // a shop that tracks stock cannot sell what is not on the shelf (the server
+  // checks again when the sale is paid)
+  const tracked = user?.trackStock !== false
+  const roomFor = (productId, wanted) => {
+    if (!tracked) return true
+    const left = list.find(x => x.id === productId)?.qty
+    if (left == null || wanted <= left) return true
+    const name = list.find(x => x.id === productId)?.name ?? 'This product'
+    toast(left <= 0 ? `${name} is out of stock.` : `Only ${left} ${name} left.`, 'error')
+    return false
+  }
   const add = p => {
+    const inCart = cart.lines.find(l => l.productId === p.id)?.qty ?? 0
+    if (!roomFor(p.id, inCart + 1)) return
     setCart(c => {
       const f = c.lines.find(l => l.productId === p.id)
       const lines = f
@@ -318,7 +331,7 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
               <div className="stepper">
                 <button onClick={() => setQty(l.productId, l.qty - 1)} aria-label="One less">{'−'}</button>
                 <span>{l.qty}</span>
-                <button onClick={() => setQty(l.productId, Math.min(999, l.qty + 1))} aria-label="One more">+</button>
+                <button onClick={() => roomFor(l.productId, l.qty + 1) && setQty(l.productId, Math.min(999, l.qty + 1))} aria-label="One more">+</button>
               </div>
               <b className="lt">{ksh(l.unitCents * l.qty)}</b>
             </div>

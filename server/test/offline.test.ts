@@ -222,6 +222,26 @@ describe('syncing offline sales', () => {
   })
 })
 
+describe('stock and codes offline', () => {
+  it('records a sale that took stock below zero, and asks for a count', async () => {
+    const t = await register()
+    await prisma.stock.update({ where: { branchId_productId: { branchId: fx.branches.west.id, productId: fx.products.beer.id } }, data: { qty: 1 } })
+    const shift = shiftOp(fx.users.cashier.id)
+    const r = await sync(t.token, [shift, saleOp(t.code, { payments: [cash(56000, { shiftClientId: shift.clientId })] })])
+    expect(r.results[1].sale.status).toBe('PAID')
+    expect(await qtyOf(fx.products.beer.id)).toBe(-1)
+    expect((await issues()).map(i => i.kind)).toEqual(['sold_without_stock'])
+  })
+
+  it('takes an M-Pesa payment without its code', async () => {
+    const t = await register()
+    const { mpesaRef, ...noCode } = mpesa(56000, 'SJK4H7QW2Z')
+    const r = await sync(t.token, [saleOp(t.code, { payments: [noCode] })])
+    expect(r.results[0].sale.status).toBe('PAID')
+    expect((await prisma.payment.findFirstOrThrow()).mpesaRef).toBeNull()
+  })
+})
+
 describe('who may appear on a till', () => {
   it('flags a sale by someone who never signed in on that till, until they have', async () => {
     const t = await register()

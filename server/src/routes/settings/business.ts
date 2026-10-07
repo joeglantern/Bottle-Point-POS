@@ -20,7 +20,8 @@ const businessSelect = {
   kraPin: true,
   receiptFooter: true,
   vatRateBps: true,
-  trackStock: true
+  trackStock: true,
+  requireMpesaCode: true
 } as const
 
 // Optional text: trimmed, and an empty string (or null) clears the field.
@@ -59,7 +60,8 @@ const patchSchema = z
     receiptFooter: text(200, 'Receipt footer'),
     // 0 for a shop that is not registered for VAT
     vatRateBps: z.number().int('VAT rate must be a whole number of basis points').min(0).max(5000, 'VAT rate is at most 5000 (50%)'),
-    trackStock: z.boolean()
+    trackStock: z.boolean(),
+    requireMpesaCode: z.boolean()
   })
   .partial()
   .refine(v => Object.values(v).some(x => x !== undefined), 'Nothing to change')

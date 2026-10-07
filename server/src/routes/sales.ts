@@ -16,7 +16,7 @@ import {
   saleInclude,
   toSaleDTO
 } from '../rules/sale-core.js'
-import { assertCustomer, isEditable, lineInput, mergeLines, priceLines, saleForActor } from '../rules/sales.js'
+import { assertCustomer, assertInStock, isEditable, lineInput, mergeLines, priceLines, saleForActor } from '../rules/sales.js'
 
 export const salesRoutes = new Hono<AppEnv>()
 
@@ -62,7 +62,8 @@ const patchBody = z
   .refine(b => b.label !== undefined || b.customerId !== undefined, 'Nothing to change')
 
 const cashItem = z.object({ method: z.literal('CASH'), amountCents: positiveCents, tenderedCents: positiveCents.optional(), clientId: clientId.optional() })
-const mpesaItem = z.object({ method: z.literal('MPESA'), amountCents: positiveCents, mpesaRef: mpesaCode, phone: phone.optional(), clientId: clientId.optional() })
+// the code is optional for shops that do not require it (Settings, Business)
+const mpesaItem = z.object({ method: z.literal('MPESA'), amountCents: positiveCents, mpesaRef: mpesaCode.optional(), phone: phone.optional(), clientId: clientId.optional() })
 const payBody = z.object({ payments: z.array(z.discriminatedUnion('method', [cashItem, mpesaItem])).min(1).max(4) })
 
 const notEditable = (s: { number: number; status: string }) =>
@@ -108,6 +109,7 @@ salesRoutes.post('/', async c => {
 
   const saleId = await prisma.$transaction(async tx => {
     const lines = await priceLines(tx, actor.businessId, merged)
+    if (actor.trackStock) await assertInStock(tx, branchId, merged)
     if (b.customerId) await assertCustomer(tx, actor.businessId, b.customerId)
     // UPDATE takes a row lock on the branch, so two tills never get the same number
     const branch = await tx.branch.update({ where: { id: branchId }, data: { nextSaleNo: { increment: 1 } } })
@@ -165,6 +167,7 @@ salesRoutes.put('/:id/lines', async c => {
     const paid = sale.payments.reduce((a, p) => a + p.amountCents, 0)
     const keep = new Map(sale.lines.map(l => [l.productId, { name: l.name, unitCents: l.unitCents }]))
     const lines = await priceLines(tx, actor.businessId, merged, keep)
+    if (actor.trackStock) await assertInStock(tx, sale.branchId, merged)
     const subtotal = lines.reduce((a, l) => a + l.unitCents * l.qty, 0)
     const total = subtotal - Math.min(sale.discountCents, subtotal)
     if (paid > 0 && total <= paid) {
@@ -218,7 +221,10 @@ salesRoutes.post('/:id/pay', async c => {
   await saleForActor(prisma, actor, saleId)
   const b = await body(c, payBody)
 
-  const codes = b.payments.flatMap(p => (p.method === 'MPESA' ? [p.mpesaRef] : []))
+  if (actor.requireMpesaCode && b.payments.some(p => p.method === 'MPESA' && !p.mpesaRef)) {
+    throw unprocessable("Type the M-Pesa code from the customer's message.", 'mpesa_code_required')
+  }
+  const codes = b.payments.flatMap(p => (p.method === 'MPESA' && p.mpesaRef ? [p.mpesaRef] : []))
   if (new Set(codes).size !== codes.length) throw unprocessable('The same M-Pesa code was entered twice.', 'mpesa_code_repeated')
 
   // the same payment sent again: answer as the first time, record nothing
@@ -246,6 +252,8 @@ salesRoutes.post('/:id/pay', async c => {
     const due = sale.totalCents - sale.payments.reduce((a, p) => a + p.amountCents, 0)
     const sum = b.payments.reduce((a, p) => a + p.amountCents, 0)
     if (sale.lines.length && sum > due) throw unprocessable(`Only ${due / 100} is still due on this sale.`, 'overpayment')
+    // the bottles leave the shelf when the sale is paid: they must be there
+    if (actor.trackStock && sum >= due) await assertInStock(tx, sale.branchId, new Map(sale.lines.map(l => [l.productId, l.qty])), true)
 
     const shift = await openShift(tx, actor.id, sale.branchId)
     if (!shift && b.payments.some(p => p.method === 'CASH')) {
@@ -263,7 +271,7 @@ salesRoutes.post('/:id/pay', async c => {
               saleId,
               method: 'MPESA',
               amountCents: p.amountCents,
-              mpesaRef: p.mpesaRef,
+              mpesaRef: p.mpesaRef ?? null,
               phone: p.phone ?? null,
               verification: 'MANUAL_UNVERIFIED',
               receivedById: actor.id,
@@ -280,7 +288,7 @@ salesRoutes.post('/:id/pay', async c => {
       'sale.pay',
       'sale',
       saleId,
-      { payments: b.payments.map(p => ({ method: p.method, amountCents: p.amountCents, mpesaRef: p.method === 'MPESA' ? p.mpesaRef : undefined })), paid },
+      { payments: b.payments.map(p => ({ method: p.method, amountCents: p.amountCents, mpesaRef: p.method === 'MPESA' ? (p.mpesaRef ?? null) : undefined })), paid },
       sale.branchId
     )
     return { paid, productIds, branchId: sale.branchId }

@@ -44,7 +44,7 @@ const paymentIn = z
     shiftId: id.nullish(),
     shiftClientId: uuid.nullish()
   })
-  .refine(p => p.method !== 'MPESA' || !!p.mpesaRef, 'An M-Pesa payment needs its code')
+  // an M-Pesa payment without its code is allowed: the shop may not require one
 type PaymentIn = z.infer<typeof paymentIn>
 
 const lineIn = z.object({
@@ -232,6 +232,19 @@ async function applyOfflinePayments(tx: Tx, device: Device, saleId: string, paym
   return paid
 }
 
+// A shop that tracks stock cannot sell what is not there, except offline: the
+// till could not check. The sale stands; the shelf needs a count.
+async function flagNegativeStock(tx: Tx, device: Device, branchId: string, productIds: string[], issues: Issue[], what: string) {
+  const biz = await tx.business.findUnique({ where: { id: device.businessId }, select: { trackStock: true } })
+  if (!biz?.trackStock) return
+  const below = await tx.stock.findMany({ where: { branchId, productId: { in: productIds }, qty: { lt: 0 } }, include: { product: { select: { name: true } } } })
+  if (!below.length) return
+  issues.push({
+    kind: 'sold_without_stock',
+    message: `${what} sold more than the records showed in stock: ${below.map(x => `${x.product.name} is now ${x.qty}`).join(', ')}. Count the shelf (Inventory, Count).`
+  })
+}
+
 async function saveIssues(tx: Tx, device: Device, branchId: string, saleId: string | null, all: Issue[]) {
   // the same note once, even when it applies to several payments
   const issues = all.filter((i, n) => all.findIndex(j => j.kind === i.kind && j.message === i.message) === n)
@@ -355,6 +368,7 @@ async function runSale(tx: Tx, device: Device, op: z.infer<typeof saleOp>, now: 
   }
 
   const paid = await applyOfflinePayments(tx, device, sale.id, op.payments, issues, now)
+  if (paid) await flagNegativeStock(tx, device, sale.branchId, lines.map(l => l.productId), issues, `offline sale ${op.offlineRef} (#${sale.number})`)
   await saveIssues(tx, device, sale.branchId, sale.id, issues)
   const final = await tx.sale.findUniqueOrThrow({ where: { id: sale.id } })
   const result: OpResult = { opId: op.opId, status: 'ok', sale: { id: final.id, number: final.number, status: final.status, offlineRef: final.offlineRef } }
@@ -375,6 +389,7 @@ async function runPay(tx: Tx, device: Device, op: z.infer<typeof payOp>, now: Da
     })
   }
   const paid = await applyOfflinePayments(tx, device, sale.id, op.payments, issues, now)
+  if (paid) await flagNegativeStock(tx, device, sale.branchId, found.lines.map(l => l.productId), issues, `sale #${sale.number}, paid offline`)
   await saveIssues(tx, device, sale.branchId, sale.id, issues)
   const final = await tx.sale.findUniqueOrThrow({ where: { id: sale.id } })
   const result: OpResult = { opId: op.opId, status: 'ok', sale: { id: final.id, number: final.number, status: final.status, offlineRef: final.offlineRef } }

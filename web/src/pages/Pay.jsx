@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
-import { useApi, useLive } from '../session.jsx'
+import { useApi, useLive, useSession } from '../session.jsx'
 import { Field, Icon, Modal, MoneyInput, ksh, useAction } from '../ui.jsx'
 
 // Taking payment for a saved sale: cash, M-Pesa prompt (STK push), a typed
@@ -26,6 +26,12 @@ function quickNotes(due) {
 }
 
 export default function PayModal({ sale: initial, shift, customerPhone, onPaid, onClose }) {
+  // a shop whose M-Pesa is not connected yet records M-Pesa by amount alone
+  const { user } = useSession()
+  const needCode = user?.requireMpesaCode !== false
+  // empty is fine when the code is optional; anything typed must be a real code
+  const codeFine = c => (needCode ? codeOk(c) : !c || codeOk(c))
+  const mpesaItem = amountCents => ({ method: 'MPESA', amountCents, ...(code ? { mpesaRef: code } : {}) })
   const [sale, setSale] = useState(initial)
   const [mode, setMode] = useState('cash')
   const [tendered, setTendered] = useState(null)
@@ -73,7 +79,7 @@ export default function PayModal({ sale: initial, shift, customerPhone, onPaid, 
     })
 
   const payCash = () => pay([{ method: 'CASH', amountCents: due, tenderedCents: tendered ?? due }])
-  const payCode = () => pay([{ method: 'MPESA', amountCents: due, mpesaRef: code }])
+  const payCode = () => pay([mpesaItem(due)])
 
   const sendStk = amountCents =>
     run(async () => {
@@ -85,7 +91,7 @@ export default function PayModal({ sale: initial, shift, customerPhone, onPaid, 
   const paySplit = async () => {
     const cashPart = splitCash ?? 0
     const cashItem = { method: 'CASH', amountCents: cashPart, tenderedCents: Math.max(tendered ?? cashPart, cashPart) }
-    if (splitRest === 'code') return pay([cashItem, { method: 'MPESA', amountCents: due - cashPart, mpesaRef: code }])
+    if (splitRest === 'code') return pay([cashItem, mpesaItem(due - cashPart)])
     // cash now, then the rest by prompt on the phone
     const r = await pay([cashItem])
     if (r && r.sale.status !== 'PAID') await sendStk(r.sale.dueCents)
@@ -95,7 +101,7 @@ export default function PayModal({ sale: initial, shift, customerPhone, onPaid, 
   const cancelStk = () => run(async () => setRequest((await api.post(`/mpesa/requests/${request.id}/cancel`)).request))
 
   const change = Math.max(0, (tendered ?? 0) - (mode === 'split' ? splitCash ?? 0 : due))
-  const splitValid = splitCash > 0 && splitCash < due && (splitRest === 'stk' ? phoneOk(phone) && (due - splitCash) % 100 === 0 : codeOk(code))
+  const splitValid = splitCash > 0 && splitCash < due && (splitRest === 'stk' ? phoneOk(phone) && (due - splitCash) % 100 === 0 : codeFine(code))
 
   const pending = request && request.status === 'PENDING'
 
@@ -109,7 +115,7 @@ export default function PayModal({ sale: initial, shift, customerPhone, onPaid, 
       {!pending && (
         <div className={'seg ' + (prompts || request ? 'four' : 'three')}>
           {MODES.map(([k, l]) => (
-            (k !== 'stk' || prompts || request) && <button key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{l}</button>
+            (k !== 'stk' || prompts || request) && <button key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{k === 'code' && !needCode ? 'M-Pesa' : l}</button>
           ))}
         </div>
       )}
@@ -133,11 +139,14 @@ export default function PayModal({ sale: initial, shift, customerPhone, onPaid, 
 
       {mode === 'code' && (
         <>
-          <p className="muted small">Fallback when the prompt does not work. Type the code from the customer's M-Pesa message. A manager checks typed codes.</p>
-          <Field label="M-Pesa transaction code">
+          <p className="muted small">{needCode
+            ? "Fallback when the prompt does not work. Type the code from the customer's M-Pesa message. A manager checks typed codes."
+            : "Check the M-Pesa message on the customer's phone or the shop's phone, then confirm. Typing the code is optional. A manager checks every M-Pesa payment against the statement."}</p>
+          <Field label={needCode ? 'M-Pesa transaction code' : 'M-Pesa code (optional)'}>
             <input className="code-in" value={code} maxLength={10} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} placeholder="SJK7D3PQ8M" autoFocus />
           </Field>
-          <button className="gold wide" disabled={busy || !codeOk(code)} onClick={payCode}>{busy ? 'Confirming...' : 'Confirm receipt of payment'}</button>
+          {!needCode && <div className="change"><span>M-Pesa received</span><b>{ksh(due)}</b></div>}
+          <button className="gold wide" disabled={busy || !codeFine(code)} onClick={payCode}>{busy ? 'Confirming...' : 'Confirm receipt of payment'}</button>
         </>
       )}
 
@@ -155,13 +164,13 @@ export default function PayModal({ sale: initial, shift, customerPhone, onPaid, 
           {prompts && (
             <div className="seg two">
               <button className={splitRest === 'stk' ? 'on' : ''} onClick={() => setSplitRest('stk')}>Prompt on phone</button>
-              <button className={splitRest === 'code' ? 'on' : ''} onClick={() => setSplitRest('code')}>Typed code</button>
+              <button className={splitRest === 'code' ? 'on' : ''} onClick={() => setSplitRest('code')}>{needCode ? 'Typed code' : 'M-Pesa received'}</button>
             </div>
           )}
           {splitRest === 'stk' ? (
             <Field label="Customer phone"><input className="label-in" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712 345 678" inputMode="tel" /></Field>
           ) : (
-            <Field label="M-Pesa code"><input className="code-in" value={code} maxLength={10} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} placeholder="SJK7D3PQ8M" /></Field>
+            <Field label={needCode ? 'M-Pesa code' : 'M-Pesa code (optional)'}><input className="code-in" value={code} maxLength={10} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} placeholder="SJK7D3PQ8M" /></Field>
           )}
           {!hasShift && <div className="warn-note">Open a shift before taking cash.</div>}
           {splitRest === 'stk' && splitCash > 0 && (due - splitCash) % 100 !== 0 && <div className="warn-note">M-Pesa takes whole shillings. Adjust the cash part.</div>}

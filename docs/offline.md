@@ -33,6 +33,7 @@ The till keeps selling when the internet drops, in Chrome, with nothing to insta
 | Shift merged | Someone opened a shift offline while their shift was open elsewhere | Check the float |
 | Not signed in on this till before / not their shift | A sale names someone unexpected | Check it was really them |
 | Till clock ahead or sale very old | The till's date and time are wrong | Fix the till's clock |
+| Sold more than the records showed in stock | The till could not check stock while offline | Count the shelf (Inventory, Count) |
 
 **Owners:** Settings, Devices, **Tills** lists every till (T1, T2...) and when it last synced. **Remove** a lost or retired till: its key stops working at once.
 

@@ -94,6 +94,10 @@ model Business {
   // off: the shop does not count bottles. Sales still record what was sold,
   // but the till shows no stock levels and nothing is ever "out of stock".
   trackStock    Boolean @default(true)
+  // off: an M-Pesa payment can be recorded by amount alone (no transaction
+  // code), for a shop whose M-Pesa is not connected yet. A manager still
+  // checks every one against the statement.
+  requireMpesaCode Boolean @default(true)
 
   branches     Branch[]
   users        User[]
