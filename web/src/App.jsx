@@ -129,6 +129,7 @@ function Shell({ themeBtn }) {
             <div className="who-name"><b>{user.name}</b><small>{user.role.toLowerCase()}</small></div>
           </div>
         </header>
+        <OfflineBanner connected={connected} />
         <BillingBanner status={billing.data} onOpen={user.role === 'OWNER' ? () => setView('admin') : null} />
         <main>
           {view === 'till' && <Till key={branchId} shift={shift} attachCustomer={attach} onCustomerAttached={() => setAttach(null)} />}
@@ -171,6 +172,32 @@ function Shell({ themeBtn }) {
           onClosed={() => { setShiftOpen(false); setShift(null); setSkipped(user.role !== 'CASHIER') }}
         />
       )}
+    </div>
+  )
+}
+
+// Tells the cashier plainly when the till cannot reach the server. Waits a few
+// seconds so a short blip does not flash a warning.
+function OfflineBanner({ connected }) {
+  const [online, setOnline] = useState(() => navigator.onLine)
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    const up = () => setOnline(true)
+    const down = () => setOnline(false)
+    window.addEventListener('online', up)
+    window.addEventListener('offline', down)
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
+  }, [])
+  const lost = !online || !connected
+  useEffect(() => {
+    if (!lost) { setShow(false); return }
+    const t = setTimeout(() => setShow(true), online ? 8000 : 2000)
+    return () => clearTimeout(t)
+  }, [lost, online])
+  if (!show) return null
+  return (
+    <div className="billing-banner offline-banner" role="alert">
+      <span><b>No connection.</b> Sales cannot be saved or paid until the internet is back. Note orders on paper and enter them when it returns.</span>
     </div>
   )
 }

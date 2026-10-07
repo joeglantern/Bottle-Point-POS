@@ -95,6 +95,7 @@ ssh "$HOST" "cat > ~/$APP/conf/default.conf" < "$SRC/deploy/nginx.conf"
 ssh "$HOST" "cat > ~/$APP/conf/console.conf" < "$SRC/deploy/nginx-console.conf"
 ssh "$HOST" "cat > ~/$APP/sites.sh" < "$SRC/deploy/sites.sh"
 ssh "$HOST" "cat > ~/$APP/backup.sh" < "$SRC/deploy/backup.sh"
+ssh "$HOST" "cat > ~/$APP/serve-backup.sh" < "$SRC/deploy/serve-backup.sh"
 
 echo "Starting containers..."
 ssh "$HOST" PUBLIC_URL="$PUBLIC_URL" CONSOLE_URL="$CONSOLE_URL" RELEASE="$RELEASE" FRESH="${FRESH:-}" DOMAIN="$DOMAIN" \
@@ -138,6 +139,7 @@ printf 'WEB_PORT=%s\nCONSOLE_PORT=%s\nBIND=%s\nDOMAIN=%s\nCADDY_CONF_DIR=%s\nCAD
   "$WEB_PORT" "$CONSOLE_PORT" "$BIND" "$DOMAIN" "$CADDY_CONF_DIR" "$CADDY_CONTAINER" > .env
 chmod 644 conf/default.conf conf/console.conf .env
 chmod 755 sites.sh backup.sh
+chmod 700 serve-backup.sh
 
 ln -sfn releases/$RELEASE web/current
 ln -sfn releases/$RELEASE console/current

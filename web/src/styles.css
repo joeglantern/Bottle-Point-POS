@@ -1113,3 +1113,4 @@ table.cards-sm td.r, table.cards-sm th.r { text-align: right; }
 .form-problem { margin: 4px 0 0; padding: 9px 12px; border-radius: var(--r-sm); border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); color: var(--red); font-size: 13px; }
 .scan-tip { margin: 0; }
 .modal .split-grid { align-items: start; }
+.offline-banner { background: rgba(222, 116, 102, .12); color: var(--red); }

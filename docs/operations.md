@@ -79,7 +79,17 @@ Normally do it in the console instead (Team, Add someone). To reset a forgotten 
 
 The `bottle-point-backup` timer runs `backup.sh` every night at 02:30 server time (UTC). It writes a compressed dump of the whole database to `~/apps/bottle-point/backups/` and keeps the last 14 days.
 
-**Copy backups off the server.** A backup on the same disk does not survive the server being lost. From your computer:
+**Off-site copies.** Every night at 05:15 server time (03:15 UTC), the second server (156.67.25.84, a different provider) pulls the newest backup into `~/bottle-point-offsite/` and keeps 30 days. Its log is `~/bottle-point-offsite/pull.log`. The pull runs from that server's crontab with `deploy/offsite-pull.sh`.
+
+The pulling key is locked on the live server to one command, `serve-backup.sh`, which only prints the newest backup. It cannot open a shell, read other files or delete anything. Because the second server pulls, someone who breaks into the live server cannot reach or delete the off-site copies. The key's line in `~/.ssh/authorized_keys` on kiptoo ends with `bottle-point-offsite`. Remove that line to revoke it.
+
+Check the copies:
+
+```
+ssh liban@156.67.25.84 'tail -3 ~/bottle-point-offsite/pull.log; ls -lh ~/bottle-point-offsite'
+```
+
+Restore drill, done on 7 October 2026: the off-site copy was loaded into a throwaway Postgres container on the second server and the client data came back intact. To get a copy onto your own computer as well:
 
 ```
 scp 'kiptoo:apps/bottle-point/backups/*' ./bottle-point-backups/
