@@ -1105,3 +1105,11 @@ table.cards-sm td.r, table.cards-sm th.r { text-align: right; }
 .login-user input { padding-right: 96px; }
 .login-clear { position: absolute; right: 4px; bottom: 4px; height: calc(100% - 30px); min-height: 36px; padding: 0 12px; border-radius: 8px; color: var(--gold-text); font-size: 13px; font-weight: 500; }
 @media (pointer: coarse) { .login-clear { min-height: 44px; bottom: 0; } }
+
+/* product form: clear button inside the barcode box, and what is missing */
+.input-clear { position: relative; display: flex; align-items: center; }
+.input-clear input { flex: 1; padding-right: 64px; }
+.input-clear .mini { position: absolute; right: 6px; min-height: 30px; padding: 0 10px; }
+.form-problem { margin: 4px 0 0; padding: 9px 12px; border-radius: var(--r-sm); border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); color: var(--red); font-size: 13px; }
+.scan-tip { margin: 0; }
+.modal .split-grid { align-items: start; }

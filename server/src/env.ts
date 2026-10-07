@@ -20,6 +20,9 @@ const schema = z.object({
   // while a server is reached over plain HTTP (no domain yet).
   COOKIE_SECURE: z.enum(['true', 'false']).optional(),
   MPESA_MODE: z.enum(['mock', 'sandbox', 'production']).default('mock'),
+  // Whether a simulated M-Pesa prompt may mark sales paid. Blocked in
+  // production unless set to allow: a simulation takes no real money.
+  MPESA_SIMULATION: z.enum(['allow', 'block']).optional(),
   MPESA_CONSUMER_KEY: z.string().default(''),
   MPESA_CONSUMER_SECRET: z.string().default(''),
   MPESA_SHORTCODE: z.string().default('174379'),
@@ -43,4 +46,5 @@ if (!parsed.success) {
 export const env = parsed.data
 export const trustedOrigins = env.TRUSTED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
 export const isProd = env.NODE_ENV === 'production'
+export const mpesaSimulationAllowed = () => (env.MPESA_SIMULATION ? env.MPESA_SIMULATION === 'allow' : !isProd)
 export const secureCookies = env.COOKIE_SECURE ? env.COOKIE_SECURE === 'true' : isProd

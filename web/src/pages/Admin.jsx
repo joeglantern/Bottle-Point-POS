@@ -140,7 +140,7 @@ function BusinessSection() {
 // ---------- M-Pesa ----------
 
 const MODES = [
-  ['MOCK', 'Simulation', 'For training. No real money moves.'],
+  ['MOCK', 'Simulation', 'For training only. No real money moves, so the till hides the prompt on the live site.'],
   ['SANDBOX', 'Safaricom sandbox', 'Safaricom test system, with test credentials.'],
   ['PRODUCTION', 'Live', 'Real payments to your Paybill or Till.']
 ]
@@ -198,7 +198,7 @@ function MpesaSection() {
           <input type="checkbox" checked={f.enabled} onChange={e => setF(x => ({ ...x, enabled: e.target.checked }))} />
           <span />Use these settings for M-Pesa prompts
         </label>
-        {!f.enabled && <p className="muted small">Switched off: prompts use Bottle Point's simulation, so no real money moves. Typed M-Pesa codes always work.</p>}
+        {(!f.enabled || !live) && <p className="muted small">The till does not send M-Pesa prompts until you switch this on with your own Paybill or Till keys. Until then cashiers take cash or type the M-Pesa code from the customer's message, which a manager checks against the statement.</p>}
         <div className="choice-list" role="radiogroup" aria-label="Mode">
           {MODES.map(([k, l, hint]) => (
             <label key={k} className={'choice' + (f.mode === k ? ' on' : '')}>

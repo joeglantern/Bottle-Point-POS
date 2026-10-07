@@ -32,7 +32,7 @@ On a phone or a tablet held upright, the order is in the bar at the bottom: tap 
 | Method | How |
 |---|---|
 | **Cash** | Enter what the customer handed over (or tap Exact or a note). The change shows. Press **Confirm receipt of payment**. |
-| **M-Pesa prompt** | Enter the customer's phone number and **Send prompt**. The customer enters their M-Pesa PIN on their phone and the sale turns paid by itself. If nothing happens, **Check status**. If they cancel or it fails, **Send again** or use a typed code. |
+| **M-Pesa prompt** | Appears once the owner has entered the shop's own Paybill or Till keys in Settings, M-Pesa. Enter the customer's phone number and **Send prompt**. The customer enters their M-Pesa PIN on their phone and the sale turns paid by itself. If nothing happens, **Check status**. If they cancel or it fails, **Send again** or use a typed code. |
 | **M-Pesa code** | The fallback. Type the 10 character code from the customer's M-Pesa message. A manager checks typed codes later. |
 | **Split** | Part cash, the rest by M-Pesa prompt or typed code. |
 
@@ -58,6 +58,7 @@ A cashier asks; a manager or the owner approves on the **Today** screen (a red n
 
 - **Today:** takings split by cash and M-Pesa, unpaid tabs by age, best sellers, sales per cashier, every till count with its shortage or excess, requests waiting for you, and typed M-Pesa codes to check against your statement (**Found it** or **Not found**).
 - **Inventory:** stock in this branch, low stock alerts, **Receive delivery**, **Count** (stock take with a reason), reorder levels, adding and editing products, and each product's history.
+- **Adding products by scanning:** on Inventory, scan a bottle. If it is new, **Add product** opens with the barcode filled in: type the name, category, size and price, then **Save**. If it is already in stock, it opens for editing. At the till, a manager or owner who scans an unknown bottle gets the same form, and the saved product goes straight into the sale. Cashiers are told to ask a manager. Scanning again while the form is open replaces the barcode, so a double scan does no harm.
 - **Staff:** see who works where.
 
 ## Owners

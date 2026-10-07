@@ -242,3 +242,18 @@ describe('product realtime', () => {
     for (const s of [west, kili, outsider]) s.close()
   })
 })
+
+describe('product form messages', () => {
+  it('says what is wrong in words', async () => {
+    const c = await Client.login('manager')
+    const tooLong = await c.post('/api/products', { ...newProduct, barcode: '071319820756071319820756' })
+    expect(tooLong.status).toBe(400)
+    expect(tooLong.body.error.details.fieldErrors.barcode[0]).toBe('Barcode must be 6 to 14 digits')
+    const size = await c.post('/api/products', { ...newProduct, barcode: null, sizeMl: 250000 })
+    expect(size.body.error.details.fieldErrors.sizeMl[0]).toMatch(/at most 100,000 ml/)
+    const price = await c.post('/api/products', { ...newProduct, barcode: null, priceCents: 0 })
+    expect(price.body.error.details.fieldErrors.priceCents[0]).toBe('Price must be more than zero')
+    // a 12 digit UPC with a leading zero is a normal barcode
+    expect((await c.post('/api/products', { ...newProduct, barcode: '071319820756' })).status).toBe(201)
+  })
+})

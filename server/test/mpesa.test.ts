@@ -801,3 +801,23 @@ describe('realtime', () => {
     kili.close()
   })
 })
+
+describe('simulated prompts in production', () => {
+  afterEach(() => { env.MPESA_SIMULATION = undefined })
+
+  it('a shop still on the simulation cannot send prompts when simulation is blocked', async () => {
+    await prisma.shift.create({ data: { branchId: fx.branches.west.id, userId: fx.users.cashier.id, openingFloatCents: 0 } })
+    const sale = await makeSale()
+    const c = await Client.login('cashier')
+    expect((await c.get('/api/mpesa/status')).body).toEqual({ prompts: true, simulation: true })
+
+    env.MPESA_SIMULATION = 'block'
+    expect((await c.get('/api/mpesa/status')).body).toEqual({ prompts: false, simulation: false })
+    const res = await c.post('/api/mpesa/stk', { saleId: sale.id, phone: PHONE })
+    expect(res.status).toBe(409)
+    expect(res.body.error.code).toBe('mpesa_not_set_up')
+    // nothing was recorded and the sale is still unpaid
+    expect(await prisma.mpesaRequest.count()).toBe(0)
+    expect((await prisma.sale.findUniqueOrThrow({ where: { id: sale.id } })).status).toBe('SAVED')
+  })
+})

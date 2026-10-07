@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, qs } from '../api.js'
-import { useApi, useLive, useSession } from '../session.jsx'
+import { atLeast, useApi, useLive, useSession } from '../session.jsx'
+import { ProductForm } from './Inventory.jsx'
 import { useBarcodeScanner, cameraScanSupported } from '../scanner.js'
 import { parseReceiptCode } from '../Receipt.jsx'
 import ReceiptLoader from '../ReceiptLoader.jsx'
@@ -30,8 +31,10 @@ function cartFromSale(s) {
 const linesKey = lines => JSON.stringify(lines.map(l => [l.productId, l.qty]))
 
 export default function Till({ shift, attachCustomer, onCustomerAttached }) {
-  const { branchId } = useSession()
+  const { branchId, user } = useSession()
   const toast = useToast()
+  const canAddProducts = atLeast(user, 'MANAGER')
+  const [newBarcode, setNewBarcode] = useState(null)
   const [run, busy] = useAction()
 
   const products = useApi('/products', [branchId])
@@ -202,9 +205,10 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
     }
     setLastScan({ code, label: p ? p.name : null, at: Date.now() })
     if (p) add(p)
-    else toast('No product with barcode ' + code, 'error')
+    else if (canAddProducts) setNewBarcode(code)
+    else toast('No product with barcode ' + code + '. Ask a manager to add it.', 'error')
   }
-  useBarcodeScanner(onScan, !paying && !receiptFor && !ask && !findCustomer)
+  useBarcodeScanner(onScan, !paying && !receiptFor && !ask && !findCustomer && !newBarcode)
 
   const canAsk = cart.saleId && cart.paidCents === 0
 
@@ -351,6 +355,14 @@ export default function Till({ shift, attachCustomer, onCustomerAttached }) {
             <MoneyInput cents={discount} onCents={setDiscount} autoFocus />
           </Field>
         </ReasonModal>
+      )}
+      {newBarcode && (
+        <ProductForm
+          barcode={newBarcode}
+          categories={categories.filter(c => c !== 'All')}
+          onClose={() => setNewBarcode(null)}
+          onDone={p => { setNewBarcode(null); products.reload(); if (p) add(p) }}
+        />
       )}
       {findCustomer && <CustomerPicker onPick={c => { setCart(x => ({ ...x, customer: c })); setFindCustomer(false) }} onClose={() => setFindCustomer(false)} />}
     </div>

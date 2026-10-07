@@ -114,7 +114,7 @@ curl -s https://pos.flarehub.co.ke/api/health
 
 ## M-Pesa in production
 
-Production starts in simulation (`MPESA_MODE=mock` in `api.env`). Each shop turns on real M-Pesa in its own Settings, M-Pesa, with its Daraja keys; nothing on the server changes. The callback address Safaricom uses is `https://pos.flarehub.co.ke/api/mpesa/callback/<token>`. The token is in `api.env` (`MPESA_CALLBACK_TOKEN`) and must stay secret.
+Production starts in simulation (`MPESA_MODE=mock` in `api.env`). A simulated prompt would mark a sale paid with no money received, so in production the till hides **M-Pesa prompt** and the API refuses it (`mpesa_not_set_up`) for any shop still on the simulation. Cash and typed M-Pesa codes always work. `MPESA_SIMULATION=allow` in `api.env` turns simulated prompts back on, for a training server only. Each shop turns on real M-Pesa in its own Settings, M-Pesa, with its Daraja keys; nothing on the server changes. The callback address Safaricom uses is `https://pos.flarehub.co.ke/api/mpesa/callback/<token>`. The token is in `api.env` (`MPESA_CALLBACK_TOKEN`) and must stay secret.
 
 To switch the server-wide fallback from simulation to a real account, set `MPESA_MODE`, `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_SHORTCODE` and `MPESA_PASSKEY` in `api.env`, then `docker compose up -d api`.
 

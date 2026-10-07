@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { api, qs } from '../api.js'
 import { useApi, useLive, useSession } from '../session.jsx'
-import { Bottle, Empty, ErrorNote, Field, Loading, Modal, MoneyInput, dateOf, ksh, timeOf, tintFor, useAction } from '../ui.jsx'
+import { Bottle, Empty, ErrorNote, Field, Loading, Modal, MoneyInput, dateOf, ksh, timeOf, tintFor, useAction, useToast } from '../ui.jsx'
+import { useBarcodeScanner } from '../scanner.js'
 
 export default function Inventory() {
   const { branchId, branch } = useSession()
@@ -24,6 +25,13 @@ export default function Inventory() {
   const units = rows.reduce((a, r) => a + Math.max(0, r.qty), 0)
   const value = rows.reduce((a, r) => a + Math.max(0, r.qty) * r.priceCents, 0)
   const done = () => { setModal(null); res.reload() }
+
+  // scanning a bottle on this page opens it, or starts adding it
+  useBarcodeScanner(code => {
+    if (!/^\d{6,14}$/.test(code)) return
+    const hit = rows.find(r => r.barcode === code)
+    setModal(hit ? { kind: 'product', item: hit } : { kind: 'product', item: null, barcode: code })
+  }, !modal)
 
   return (
     <div className="cashier">
@@ -74,6 +82,7 @@ export default function Inventory() {
         </div>
         <button className="gold" onClick={() => setModal({ kind: 'receive' })}>Receive delivery</button>
         <button className="outline" onClick={() => setModal({ kind: 'product', item: null })}>Add product</button>
+        <p className="muted small scan-tip">Tip: scan a bottle here to add it, or to open it if it is already in stock.</p>
         <div className="unpaid">
           <h4>Low stock alerts <span className="badge">{low.length}</span></h4>
           {low.map(p => (
@@ -87,7 +96,7 @@ export default function Inventory() {
       </aside>
       {modal?.kind === 'receive' && <Receive rows={rows} first={modal.item} onClose={() => setModal(null)} onDone={done} />}
       {modal?.kind === 'count' && <Count item={modal.item} onClose={() => setModal(null)} onDone={done} />}
-      {modal?.kind === 'product' && <ProductForm item={modal.item} categories={categories.filter(c => c !== 'All')} onClose={() => setModal(null)} onDone={done} />}
+      {modal?.kind === 'product' && <ProductForm item={modal.item} barcode={modal.barcode} categories={categories.filter(c => c !== 'All')} onClose={() => setModal(null)} onDone={done} />}
       {modal?.kind === 'history' && <History item={modal.item} onClose={() => setModal(null)} />}
     </div>
   )
@@ -148,21 +157,39 @@ function Count({ item, onClose, onDone }) {
   )
 }
 
-function ProductForm({ item, categories, onClose, onDone }) {
+// What is wrong with the form, in words, or null when it can be saved.
+function productProblem({ name, category, sizeMl, barcode, price }) {
+  if (!name.trim()) return 'Enter the product name.'
+  if (!category.trim()) return 'Enter a category, for example Whisky.'
+  if (!price || !Number.isFinite(price) || price < 1) return 'Enter the selling price.'
+  if (price > 1_000_000_000) return 'That price is too high.'
+  if (sizeMl && (Number(sizeMl) < 1 || Number(sizeMl) > 100_000)) return 'Size is in ml, for example 750.'
+  if (barcode && (barcode.length < 6 || barcode.length > 14)) return `A barcode has 6 to 14 digits. This one has ${barcode.length}. Clear the box and scan once.`
+  return null
+}
+
+export function ProductForm({ item, barcode: scanned, categories, onClose, onDone }) {
   const isNew = !item
   const [name, setName] = useState(item?.name ?? '')
   const [category, setCategory] = useState(item?.category ?? '')
   const [sizeMl, setSizeMl] = useState(item?.sizeMl ? String(item.sizeMl) : '')
-  const [barcode, setBarcode] = useState(item?.barcode ?? '')
+  const [barcode, setBarcode] = useState(item?.barcode ?? scanned ?? '')
   const [price, setPrice] = useState(item?.priceCents ?? null)
   const [run, busy] = useAction()
-  const id = item?.productId
+  const toast = useToast()
+  const id = item?.productId ?? item?.id
+  // a scan always replaces the barcode, whichever box has focus
+  useBarcodeScanner(code => {
+    if (!/^\d+$/.test(code)) return toast('That is not a product barcode.', 'error')
+    setBarcode(code)
+    toast('Barcode ' + code + ' scanned', 'ok')
+  })
+  const problem = productProblem({ name, category, sizeMl, barcode, price })
   const save = () =>
     run(async () => {
       const body = { name: name.trim(), category: category.trim(), sizeMl: sizeMl ? Number(sizeMl) : null, barcode: barcode || null, priceCents: price }
-      if (isNew) await api.post('/products', body)
-      else await api.patch(`/products/${id}`, body)
-      onDone()
+      const r = isNew ? await api.post('/products', body) : await api.patch(`/products/${id}`, body)
+      onDone(r.product)
     }, isNew ? 'Product added' : 'Product updated')
   const archive = () =>
     window.confirm(`Stop selling ${item.name}? It disappears from the till but its history stays.`) &&
@@ -179,10 +206,16 @@ function ProductForm({ item, categories, onClose, onDone }) {
       </div>
       <div className="split-grid">
         <Field label="Price (KSh)"><MoneyInput cents={price} onCents={setPrice} /></Field>
-        <Field label="Barcode" hint="Scan it into this box"><input className="label-in" inputMode="numeric" value={barcode} onChange={e => setBarcode(e.target.value.replace(/\D/g, ''))} /></Field>
+        <Field label="Barcode" hint="Scan the bottle at any time while this is open">
+          <div className="input-clear">
+            <input className="label-in" inputMode="numeric" value={barcode} onChange={e => setBarcode(e.target.value.replace(/\D/g, ''))} placeholder="Scan or type" />
+            {barcode && <button type="button" className="ghost mini" onClick={() => setBarcode('')} aria-label="Clear barcode">Clear</button>}
+          </div>
+        </Field>
       </div>
       {!isNew && price !== item.priceCents && <p className="muted small">Price changes apply to new sales only. Past receipts keep their price.</p>}
-      <button className="gold wide" disabled={busy || !name.trim() || !category.trim() || !price} onClick={save}>Save</button>
+      {problem && (name || category || price || barcode) && <p className="form-problem" role="status">{problem}</p>}
+      <button className="gold wide" disabled={busy || !!problem} onClick={save}>Save</button>
       {!isNew && <button className="ghost danger" onClick={archive}>Stop selling this product</button>}
     </Modal>
   )

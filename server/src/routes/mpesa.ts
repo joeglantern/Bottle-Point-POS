@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { prisma, type Prisma } from '../db.js'
-import { env } from '../env.js'
+import { env, mpesaSimulationAllowed } from '../env.js'
 import { assertRole, branchFor, requireRole, type Actor, type AppEnv } from '../middleware/auth.js'
 import { AppError, conflict, notFound, unprocessable } from '../lib/errors.js'
 import { body, id, phone, query } from '../lib/validate.js'
@@ -42,9 +42,26 @@ const stkSchema = z.object({
   amountCents: z.number().int().max(1_000_000_000).optional()
 })
 
+// Whether this shop can send M-Pesa prompts. The till hides the prompt when
+// it cannot: a simulated prompt in production would mark sales paid with no
+// money received.
+async function promptsFor(businessId: string) {
+  const mode = await darajaFor(businessId).then(d => d.mode, () => null)
+  // unreadable settings still try, so the cashier gets the clear "not set up correctly" error
+  return { mode, prompts: mode !== 'mock' || mpesaSimulationAllowed() }
+}
+
+mpesaRoutes.get('/status', async c => {
+  const { mode, prompts } = await promptsFor(c.get('actor').businessId)
+  return c.json({ prompts, simulation: mode === 'mock' && prompts })
+})
+
 mpesaRoutes.post('/stk', async c => {
   const actor = c.get('actor')
   const input = await body(c, stkSchema)
+  if (!(await promptsFor(actor.businessId)).prompts) {
+    throw new AppError(409, 'mpesa_not_set_up', "M-Pesa prompts are not set up for this shop yet. Take cash, or type the M-Pesa code from the customer's message.")
+  }
 
   const found = await prisma.sale.findUnique({ where: { id: input.saleId }, select: { branchId: true } })
   if (!found || !actor.branchIds.includes(found.branchId)) throw notFound('Sale')
@@ -188,7 +205,7 @@ mpesaRoutes.post('/requests/:id/simulate', async c => {
   const actor = c.get('actor')
   // the demo button exists only where this shop's M-Pesa is a simulation
   const mode = await darajaFor(actor.businessId).then(d => d.mode, () => null)
-  if (mode !== 'mock') throw notFound()
+  if (mode !== 'mock' || !mpesaSimulationAllowed()) throw notFound()
   assertRole(actor, 'MANAGER')
   const req = await requestForActor(actor, c.req.param('id'))
   const input = await body(c, simulateSchema)

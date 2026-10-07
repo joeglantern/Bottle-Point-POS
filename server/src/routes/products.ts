@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma, Prisma, type Product, type Tx } from '../db.js'
 import { audit } from '../lib/audit.js'
 import { AppError, conflict, notFound } from '../lib/errors.js'
-import { body, id, parse, positiveCents, query } from '../lib/validate.js'
+import { body, id, parse, query } from '../lib/validate.js'
 import { atLeast, requireRole, type Actor, type AppEnv } from '../middleware/auth.js'
 import { emitToBusiness, Events } from '../realtime.js'
 import { barcode, ensureStockRows, stockBranchFor, toProductDTO } from '../rules/catalog.js'
@@ -21,9 +21,9 @@ const listQuery = z.object({
 const fields = {
   name: z.string().trim().min(1, 'Name is required').max(120),
   category: z.string().trim().min(1, 'Category is required').max(40),
-  sizeMl: z.number().int().min(1).max(100_000).nullable(),
+  sizeMl: z.number({ error: 'Size must be a whole number of ml' }).int('Size must be a whole number of ml').min(1, 'Size must be at least 1 ml').max(100_000, 'Size can be at most 100,000 ml (100 litres)').nullable(),
   barcode: barcode.nullable(),
-  priceCents: positiveCents
+  priceCents: z.number({ error: 'Enter a price' }).int('Price must be in whole cents').min(1, 'Price must be more than zero').max(1_000_000_000, 'Price is too high')
 }
 
 const createSchema = z.object({

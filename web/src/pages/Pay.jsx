@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
-import { useLive } from '../session.jsx'
+import { useApi, useLive } from '../session.jsx'
 import { Field, Icon, Modal, MoneyInput, ksh, useAction } from '../ui.jsx'
 
 // Taking payment for a saved sale: cash, M-Pesa prompt (STK push), a typed
@@ -32,7 +32,11 @@ export default function PayModal({ sale: initial, shift, customerPhone, onPaid, 
   const [code, setCode] = useState('')
   const [phone, setPhone] = useState(customerPhone ? '0' + String(customerPhone).replace(/^254/, '') : '')
   const [splitCash, setSplitCash] = useState(null)
-  const [splitRest, setSplitRest] = useState('stk')
+  // prompts only where the shop has real M-Pesa (or a simulation is allowed)
+  const status = useApi('/mpesa/status', [])
+  const prompts = status.data ? status.data.prompts : false
+  const [splitRest, setSplitRest] = useState('code')
+  useEffect(() => { if (prompts) setSplitRest('stk') }, [prompts])
   const [request, setRequest] = useState(sale.mpesaRequests?.find(r => r.status === 'PENDING') ?? null)
   const [run, busy] = useAction()
   const paidOnce = useRef(false)
@@ -102,9 +106,9 @@ export default function PayModal({ sale: initial, shift, customerPhone, onPaid, 
       className="pay-modal"
     >
       {!pending && (
-        <div className="seg four">
+        <div className={'seg ' + (prompts || request ? 'four' : 'three')}>
           {MODES.map(([k, l]) => (
-            <button key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{l}</button>
+            (k !== 'stk' || prompts || request) && <button key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{l}</button>
           ))}
         </div>
       )}
@@ -147,10 +151,12 @@ export default function PayModal({ sale: initial, shift, customerPhone, onPaid, 
             </Field>
           </div>
           <div className="change"><span>Rest by M-Pesa</span><b>{ksh(Math.max(0, due - (splitCash ?? 0)))}</b></div>
-          <div className="seg two">
-            <button className={splitRest === 'stk' ? 'on' : ''} onClick={() => setSplitRest('stk')}>Prompt on phone</button>
-            <button className={splitRest === 'code' ? 'on' : ''} onClick={() => setSplitRest('code')}>Typed code</button>
-          </div>
+          {prompts && (
+            <div className="seg two">
+              <button className={splitRest === 'stk' ? 'on' : ''} onClick={() => setSplitRest('stk')}>Prompt on phone</button>
+              <button className={splitRest === 'code' ? 'on' : ''} onClick={() => setSplitRest('code')}>Typed code</button>
+            </div>
+          )}
           {splitRest === 'stk' ? (
             <Field label="Customer phone"><input className="label-in" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712 345 678" inputMode="tel" /></Field>
           ) : (

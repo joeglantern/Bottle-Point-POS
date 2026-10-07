@@ -39,7 +39,13 @@ async function request(method, path, body) {
     if (res.status === 401) window.dispatchEvent(new Event('bp:signed-out'))
     // suspended or cancelled subscription: the app shows why, everywhere at once
     if (res.status === 402 && e && /^subscription_/.test(e.code)) window.dispatchEvent(new CustomEvent('bp:subscription', { detail: { code: e.code, message: e.message } }))
-    throw new ApiError(res.status, e ? e.code : 'http_' + res.status, e ? e.message : 'Something went wrong.', e && e.details)
+    // "Invalid input." alone does not help anyone: show what was wrong
+    let message = e ? e.message : 'Something went wrong.'
+    if (e && message === 'Invalid input.' && e.details) {
+      const first = [...(e.details.formErrors ?? []), ...Object.values(e.details.fieldErrors ?? {}).flat()][0]
+      if (first) message = /[.!?]$/.test(first) ? first : first + '.'
+    }
+    throw new ApiError(res.status, e ? e.code : 'http_' + res.status, message, e && e.details)
   }
   return data
 }
