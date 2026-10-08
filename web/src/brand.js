@@ -151,8 +151,14 @@ function loadImage(src) {
 // side, under 64 KB), keeping transparency.
 export async function logoFromFile(file) {
   if (!/^image\/(png|jpeg|webp)$/.test(file.type)) throw new Error('Choose a PNG, JPEG or WebP image.')
-  const url = URL.createObjectURL(file)
-  try {
+  // read as a data: address; the site's security policy does not allow blob: images
+  const url = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('That file could not be read.'))
+    reader.readAsDataURL(file)
+  })
+  {
     const img = await loadImage(url)
     for (const side of [512, 384, 256, 192]) {
       const scale = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight))
@@ -167,7 +173,5 @@ export async function logoFromFile(file) {
       }
     }
     throw new Error('That image is too detailed to use as a logo. Try a simpler or smaller file.')
-  } finally {
-    URL.revokeObjectURL(url)
   }
 }
