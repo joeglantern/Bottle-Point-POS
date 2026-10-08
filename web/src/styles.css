@@ -201,11 +201,13 @@ b { font-weight: 600; }
   grid-template-columns: 76px minmax(0, 1fr);
   height: 100%;
 }
+.shell.side { overflow: hidden; }
 .rail {
-  display: grid; grid-template-rows: auto 1fr auto; justify-items: center;
-  padding: 18px 0; border-right: 1px solid var(--line); background: var(--ink-0);
+  display: grid; grid-template-rows: minmax(0, 1fr) auto auto; justify-items: center;
+  padding: 22px 0 18px; border-right: 1px solid var(--line); background: var(--ink-0);
+  min-height: 0; overflow: hidden;
 }
-.rail-logo { width: 26px; margin-bottom: 28px; }
+.rail-logo { height: 20px; width: auto; margin: 16px auto 0; opacity: .45; }
 .rail nav { display: grid; align-content: start; gap: 6px; }
 .rail nav button, .rail-out {
   width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
@@ -221,7 +223,8 @@ b { font-weight: 600; }
 .rail nav button.on { color: var(--on-gold); background: var(--gold); box-shadow: 0 8px 24px -10px rgba(var(--gold-rgb), .7); }
 .ico { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
-.body { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; }
+.body { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.body > header, .body > .billing-banner { flex: none; }
 .top {
   display: grid; grid-template-columns: 1fr auto; align-items: center;
   padding: 14px 24px; border-bottom: 1px solid var(--line);
@@ -229,7 +232,7 @@ b { font-weight: 600; }
 .who { display: grid; grid-auto-flow: column; align-items: center; gap: 12px; }
 .who b { font-size: 13px; }
 .branch-tag { font-size: 12px; color: var(--gold-text); border: 1px solid var(--gold-lo); padding: 4px 12px; border-radius: 999px; }
-main { overflow: auto; min-height: 0; }
+main { flex: 1 1 auto; overflow: auto; min-height: 0; }
 
 /* ---------- two-pane workspace ---------- */
 .cashier {
@@ -488,7 +491,6 @@ tr.expand td { background: var(--ink-2); }
 .logo img { height: 30px; width: auto; }
 .logo.xl img { height: auto; width: min(560px, 100%); }
 .login-brand { line-height: 0; }
-.rail-logo { width: auto; height: 34px; }
 .on-light { display: none !important; }
 :root[data-theme="light"] .on-dark { display: none !important; }
 :root[data-theme="light"] .on-light { display: inline-block !important; }
@@ -1126,7 +1128,6 @@ table.cards-sm td.r, table.cards-sm th.r { text-align: right; }
 .sync-banner { background: rgba(var(--gold-rgb), .1); color: var(--gold-text); }
 
 /* ---------- the shop's brand leads; Bottle Point stays small ---------- */
-.rail-logo { height: 20px; width: auto; margin: 16px auto 0; opacity: .45; }
 @media (hover: hover) { .rail-logo:hover { opacity: .8; } }
 .shop-logo { display: block; max-height: 36px; max-width: 200px; width: auto; height: auto; object-fit: contain; }
 .shop-name { font: 650 19px/1.1 var(--f-display); letter-spacing: -0.01em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
@@ -1134,7 +1135,6 @@ table.cards-sm td.r, table.cards-sm th.r { text-align: right; }
 .powered-by { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; letter-spacing: .02em; }
 .logo.tiny img { height: 16px; }
 @media (max-width: 899px) { .shop-logo { max-height: 30px; max-width: 150px; } .shop-name { font-size: 17px; } }
-.rail { grid-template-rows: 1fr auto auto; padding-top: 22px; }
 
 /* sign in on a shop's own address: the shop leads, Bottle Point signs off */
 .login-art.shop { align-content: center; justify-items: start; gap: 14px; }
@@ -1173,3 +1173,13 @@ table.cards-sm td.r, table.cards-sm th.r { text-align: right; }
 .brand-preview { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px; border: 1px dashed var(--line-2); border-radius: var(--r-sm); margin-bottom: 12px; }
 .brand-btn { padding: 10px 16px; display: inline-block; }
 .brand-link { color: var(--gold-text); text-decoration: underline; }
+
+@media (min-width: 900px) and (max-height: 760px) {
+  .rail { padding: 12px 0 10px; }
+  .rail nav { gap: 2px; }
+  .rail nav button, .rail-out { height: 42px; width: 46px; }
+}
+@media (min-width: 900px) and (max-height: 620px) {
+  .rail-logo { display: none; }
+  .rail nav button, .rail-out { height: 38px; }
+}
