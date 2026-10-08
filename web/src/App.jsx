@@ -27,7 +27,8 @@ export default function App() {
 function Shell({ themeBtn }) {
   const { user, branch, branches, branchId, chooseBranch, connected, logout, branding } = useSession()
   // the shop's colour in place of brass, while someone of that shop is signed in
-  useEffect(() => { applyBrand(branding?.accent) }, [branding?.accent])
+  const themeKey = JSON.stringify(branding?.theme ?? branding?.accent ?? null)
+  useEffect(() => { applyBrand(branding?.theme ?? branding?.accent) }, [themeKey])
   const toast = useToast()
   const [view, setView] = useState('till')
   const [shift, setShift] = useState(undefined) // undefined = loading, null = none

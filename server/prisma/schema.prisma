@@ -105,6 +105,9 @@ model Business {
   logoType      String?
   logoUpdatedAt DateTime?
   brandColor    String?
+  // colours for each part of the till: { buttons, highlights, text, glow }
+  // (hex). Parts left out follow buttons. brandColor is always buttons.
+  brandTheme    Json?
 
   branches     Branch[]
   users        User[]

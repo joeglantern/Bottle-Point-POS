@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { prisma } from '../../db.js'
+import { prisma, Prisma } from '../../db.js'
 import { audit } from '../../lib/audit.js'
 import { badRequest, notFound } from '../../lib/errors.js'
 import { brandingFor } from '../../lib/branding.js'
@@ -24,7 +24,8 @@ const businessSelect = {
   vatRateBps: true,
   trackStock: true,
   requireMpesaCode: true,
-  brandColor: true
+  brandColor: true,
+  brandTheme: true
 } as const
 
 // Optional text: trimmed, and an empty string (or null) clears the field.
@@ -38,6 +39,7 @@ const text = (max: number, what: string) =>
 
 const emailRule = z.email()
 const KRA_PIN = /^[A-Z]\d{9}[A-Z]$/
+const hex = z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Colour must look like #1f6feb').transform(s => s.toLowerCase())
 
 const patchSchema = z
   .object({
@@ -66,7 +68,13 @@ const patchSchema = z
     trackStock: z.boolean(),
     requireMpesaCode: z.boolean(),
     // the till's accent colour, picked from the logo; null goes back to brass
-    brandColor: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Colour must look like #1f6feb').transform(s => s.toLowerCase()).nullable()
+    brandColor: hex.nullable(),
+    // a colour for each part of the till; parts left out follow buttons. null: brass
+    brandTheme: z
+      .object({ buttons: hex, highlights: hex.nullable().optional(), text: hex.nullable().optional(), glow: hex.nullable().optional() })
+      .strict()
+      .transform(t => Object.fromEntries(Object.entries(t).filter(([, v]) => v)) as { buttons: string })
+      .nullable()
   })
   .partial()
   .refine(v => Object.values(v).some(x => x !== undefined), 'Nothing to change')
@@ -133,10 +141,16 @@ businessRoutes.patch('/business', requireRole('OWNER'), async c => {
     const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Business" WHERE id = ${actor.businessId} FOR UPDATE`
     if (!locked.length) throw notFound('Business')
     const before = await tx.business.findUniqueOrThrow({ where: { id: actor.businessId }, select: businessSelect })
-    const fields = FIELDS.filter(k => input[k] !== undefined && input[k] !== before[k])
+    // the colour set and the button colour always agree
+    if (input.brandTheme !== undefined) input.brandColor = input.brandTheme?.buttons ?? null
+    else if (input.brandColor !== undefined) (input as Record<string, unknown>).brandTheme = input.brandColor ? { buttons: input.brandColor } : null
+    const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+    const fields = FIELDS.filter(k => input[k] !== undefined && !same(input[k], before[k]))
     if (!fields.length) return before
-    const pick = (src: Partial<Record<Field, string | number | boolean | null>>) => Object.fromEntries(fields.map(k => [k, src[k] ?? null]))
-    const after = await tx.business.update({ where: { id: actor.businessId }, data: pick(input), select: businessSelect })
+    const pick = (src: Partial<Record<Field, unknown>>) => Object.fromEntries(fields.map(k => [k, src[k] ?? null]))
+    const data = pick(input) as Record<string, unknown>
+    if ('brandTheme' in data && data.brandTheme === null) data.brandTheme = Prisma.DbNull
+    const after = await tx.business.update({ where: { id: actor.businessId }, data: data as never, select: businessSelect })
     await audit(tx, actor, 'business.updated', 'business', after.id, { fields, from: pick(before), to: pick(after) })
     return after
   })

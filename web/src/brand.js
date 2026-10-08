@@ -86,10 +86,47 @@ export function brandVars(accent, theme) {
   }
 }
 
-// Writes the shop's colour for both themes, or puts brass back (null).
-export function applyBrand(accent) {
+const HEX = /^#[0-9a-f]{6}$/i
+
+// A shop's colours as { buttons, highlights, text, glow }. Accepts the old
+// single colour too. null means Bottle Point's brass.
+export function normalTheme(t) {
+  if (!t) return null
+  if (typeof t === 'string') return HEX.test(t) ? { buttons: t.toLowerCase() } : null
+  if (!HEX.test(t.buttons ?? '')) return null
+  const out = { buttons: t.buttons.toLowerCase() }
+  for (const k of ['highlights', 'text', 'glow']) if (HEX.test(t[k] ?? '')) out[k] = t[k].toLowerCase()
+  return out
+}
+
+// Variables for each part, for one theme (dark or light).
+export function themeVars(t, mode) {
+  const vars = brandVars(t.buttons, mode)
+  if (t.highlights) {
+    const rgb = hexToRgb(t.highlights)
+    Object.assign(vars, {
+      '--hl': t.highlights,
+      '--hl-rgb': rgb.join(', '),
+      '--on-hl': contrast('#111111', t.highlights) >= contrast('#ffffff', t.highlights) ? '#111111' : '#ffffff',
+      '--hl-text': readableOn(t.highlights, mode)
+    })
+  }
+  if (t.text) vars['--gold-text'] = readableOn(t.text, mode)
+  if (t.glow) {
+    const rgb = hexToRgb(t.glow).join(', ')
+    vars['--glow-rgb'] = rgb
+    vars['--glow'] = `rgba(${rgb}, ${mode === 'dark' ? 0.13 : 0.16})`
+  }
+  return vars
+}
+
+// Writes a shop's colours for both themes, or puts brass back (null). Only
+// the till of that shop calls this (its own address, its own staff), and
+// signing out puts brass back, so colours never reach another shop.
+export function applyBrand(theme) {
+  const t = normalTheme(theme)
   let el = document.getElementById('bp-brand')
-  if (!accent || !/^#[0-9a-f]{6}$/i.test(accent)) {
+  if (!t) {
     el?.remove()
     return
   }
@@ -99,7 +136,14 @@ export function applyBrand(accent) {
     document.head.appendChild(el)
   }
   const block = vars => Object.entries(vars).map(([k, v]) => `${k}: ${v};`).join(' ')
-  el.textContent = `:root { ${block(brandVars(accent, 'dark'))} } :root[data-theme="light"] { ${block(brandVars(accent, 'light'))} }`
+  el.textContent = `:root { ${block(themeVars(t, 'dark'))} } :root[data-theme="light"] { ${block(themeVars(t, 'light'))} }`
+}
+
+// A first set from a logo's colours: the strongest for buttons, the next for
+// highlights, a third for the glow.
+export function themeFromPalette(colours) {
+  if (!colours.length) return null
+  return normalTheme({ buttons: colours[0], highlights: colours[1] ?? null, glow: colours[2] ?? null })
 }
 
 // The colours a logo suggests, most prominent first. Near white, near black

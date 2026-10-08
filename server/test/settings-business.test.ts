@@ -18,7 +18,7 @@ beforeEach(async () => {
 })
 
 const PATH = '/api/admin/business'
-const KEYS = ['address', 'brandColor', 'email', 'id', 'kraPin', 'legalName', 'name', 'phone', 'receiptFooter', 'requireMpesaCode', 'trackStock', 'vatRateBps']
+const KEYS = ['address', 'brandColor', 'brandTheme', 'email', 'id', 'kraPin', 'legalName', 'name', 'phone', 'receiptFooter', 'requireMpesaCode', 'trackStock', 'vatRateBps']
 
 const FULL = {
   name: 'Bottle Point Westlands',
@@ -97,7 +97,8 @@ describe('GET /api/admin/business', () => {
       kraPin: null,
       receiptFooter: null,
       vatRateBps: 1600,
-      trackStock: true, requireMpesaCode: true, brandColor: null
+      trackStock: true, requireMpesaCode: true, brandColor: null,
+      brandTheme: null
     })
   })
 
@@ -141,7 +142,7 @@ describe('PATCH /api/admin/business', () => {
     })
     expect(r.status).toBe(200)
     expect(Object.keys(r.body.business).sort()).toEqual(KEYS)
-    expect(r.body.business).toEqual({ id: fx.business.id, ...FULL, vatRateBps: 0, trackStock: true, requireMpesaCode: true, brandColor: null })
+    expect(r.body.business).toEqual({ id: fx.business.id, ...FULL, vatRateBps: 0, trackStock: true, requireMpesaCode: true, brandColor: null, brandTheme: null })
     expect((await owner.get(PATH)).body.business).toEqual(r.body.business)
     expect(await dbBusiness()).toMatchObject({ ...FULL, vatRateBps: 0, currency: 'KES' })
 
@@ -158,7 +159,7 @@ describe('PATCH /api/admin/business', () => {
     await owner.patch(PATH, FULL)
     const r = await owner.patch(PATH, { phone: '0712 345 678' })
     expect(r.status).toBe(200)
-    expect(r.body.business).toEqual({ id: fx.business.id, ...FULL, phone: '0712 345 678', trackStock: true, requireMpesaCode: true, brandColor: null })
+    expect(r.body.business).toEqual({ id: fx.business.id, ...FULL, phone: '0712 345 678', trackStock: true, requireMpesaCode: true, brandColor: null, brandTheme: null })
     const log = await audits()
     expect(log).toHaveLength(2)
     expect(log[1]!.data).toEqual({ fields: ['phone'], from: { phone: '020 765 4321' }, to: { phone: '0712 345 678' } })
@@ -178,7 +179,8 @@ describe('PATCH /api/admin/business', () => {
       kraPin: null,
       receiptFooter: null,
       vatRateBps: 1600,
-      trackStock: true, requireMpesaCode: true, brandColor: null
+      trackStock: true, requireMpesaCode: true, brandColor: null,
+      brandTheme: null
     })
     expect(await dbBusiness()).toMatchObject({ legalName: null, email: null, phone: null, address: null, kraPin: null, receiptFooter: null })
     for (const name of ['', '   ', null]) {
@@ -201,7 +203,7 @@ describe('PATCH /api/admin/business', () => {
     }
     const r = await owner.patch(PATH, edge)
     expect(r.status).toBe(200)
-    expect(r.body.business).toEqual({ id: fx.business.id, ...edge, trackStock: true, requireMpesaCode: true, brandColor: null })
+    expect(r.body.business).toEqual({ id: fx.business.id, ...edge, trackStock: true, requireMpesaCode: true, brandColor: null, brandTheme: null })
     const top = await owner.patch(PATH, { name: 'N'.repeat(80), vatRateBps: 0 })
     expect(top.status).toBe(200)
     expect(top.body.business).toMatchObject({ name: 'N'.repeat(80), vatRateBps: 0 })
@@ -275,7 +277,7 @@ describe('PATCH /api/admin/business', () => {
     const stamp = (await dbBusiness()).updatedAt
     const same = await owner.patch(PATH, { ...FULL, kraPin: ' p051234567x ', name: ` ${FULL.name} ` })
     expect(same.status).toBe(200)
-    expect(same.body.business).toEqual({ id: fx.business.id, ...FULL, trackStock: true, requireMpesaCode: true, brandColor: null })
+    expect(same.body.business).toEqual({ id: fx.business.id, ...FULL, trackStock: true, requireMpesaCode: true, brandColor: null, brandTheme: null })
     expect(await audits()).toHaveLength(1)
     expect((await dbBusiness()).updatedAt).toEqual(stamp)
     // clearing something that is already empty is not a change either

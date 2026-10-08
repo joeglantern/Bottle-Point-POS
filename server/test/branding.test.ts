@@ -57,6 +57,43 @@ describe('a shop colour', () => {
   })
 })
 
+describe('a colour for each part of the till', () => {
+  it('saves the set, keeps the button colour in step, and refuses anything else', async () => {
+    const owner = await Client.login('owner')
+    const set = { buttons: '#0A7C5A', highlights: '#f2a900', text: '#0a7c5a', glow: '#123456' }
+    const r = await owner.req('PATCH', '/api/admin/business', { brandTheme: set })
+    expect(r.status).toBe(200)
+    expect(r.body.business).toMatchObject({ brandColor: '#0a7c5a', brandTheme: { buttons: '#0a7c5a', highlights: '#f2a900', text: '#0a7c5a', glow: '#123456' } })
+    const me = (await (await Client.login('cashier')).get('/api/session/me')).body.branding
+    expect(me).toMatchObject({ accent: '#0a7c5a', theme: { highlights: '#f2a900' } })
+
+    // parts left out follow the buttons
+    const only = await owner.req('PATCH', '/api/admin/business', { brandTheme: { buttons: '#112233', highlights: null } })
+    expect(only.body.business.brandTheme).toEqual({ buttons: '#112233' })
+
+    expect((await owner.req('PATCH', '/api/admin/business', { brandTheme: { buttons: 'green' } })).status).toBe(400)
+    expect((await owner.req('PATCH', '/api/admin/business', { brandTheme: { buttons: '#112233', background: '#000000' } })).status).toBe(400)
+    expect((await owner.req('PATCH', '/api/admin/business', { brandTheme: { highlights: '#112233' } })).status).toBe(400)
+    expect((await (await Client.login('manager')).req('PATCH', '/api/admin/business', { brandTheme: set })).status).toBe(403)
+
+    // back to brass
+    const reset = await owner.req('PATCH', '/api/admin/business', { brandTheme: null })
+    expect(reset.body.business).toMatchObject({ brandColor: null, brandTheme: null })
+    expect((await owner.get('/api/session/me')).body.branding).toMatchObject({ accent: null, theme: null })
+  })
+
+  it('another shop never sees it', async () => {
+    const owner = await Client.login('owner')
+    await owner.req('PATCH', '/api/admin/business', { brandTheme: { buttons: '#0a7c5a' } })
+    const other = await prisma.business.create({ data: { name: 'Other' } })
+    const branch = await prisma.branch.create({ data: { businessId: other.id, name: 'Main' } })
+    const { createStaff } = await import('../src/lib/users.js')
+    await createStaff(prisma, { businessId: other.id, name: 'O', username: 'otherowner', pin: '1234', role: 'OWNER', branchIds: [branch.id] })
+    const o = await Client.login('otherowner')
+    expect((await o.get('/api/session/me')).body.branding).toMatchObject({ name: 'Other', accent: null, theme: null })
+  })
+})
+
 describe('on the shop address, before anyone signs in', () => {
   const BASE = 'pos.example.test'
   let saved: string | undefined

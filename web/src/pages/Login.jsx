@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { useOnline, useSession } from '../session.jsx'
-import { Logo, PoweredBy } from '../ui.jsx'
+import { Logo } from '../ui.jsx'
 import { applyBrand } from '../brand.js'
 
 // The username is remembered on this device so a till only needs the PIN.
@@ -40,7 +40,8 @@ export default function Login({ themeBtn }) {
     if (shop.name) document.title = `${shop.name} · Bottle Point`
   }, [shop.name])
   // the shop's own colour from the first screen
-  useEffect(() => { applyBrand(shop.branding?.accent) }, [shop.branding?.accent])
+  const themeKey = JSON.stringify(shop.branding?.theme ?? shop.branding?.accent ?? null)
+  useEffect(() => { applyBrand(shop.branding?.theme ?? shop.branding?.accent) }, [themeKey])
   const brand = shop.branding
 
   const submit = async value => {
@@ -116,10 +117,17 @@ export default function Login({ themeBtn }) {
       <div className={'login-art' + (brand ? ' shop' : '')}>
         {brand ? (
           <>
-            {brand.logoUrl && <img src={brand.logoUrl} alt="" className="login-shop-logo" />}
-            <h1 className="login-shop-name">{brand.name}</h1>
-            <p className="login-sub">Staff sign in</p>
-            <PoweredBy className="login-powered" />
+            <div className="login-shop">
+              {brand.logoUrl && <img src={brand.logoUrl} alt="" className="login-shop-logo" />}
+              <div>
+                <h1 className="login-shop-name">{brand.name}</h1>
+                <p className="login-sub">Staff sign in</p>
+              </div>
+            </div>
+            <div className="login-by">
+              <span>Powered by</span>
+              <Logo className="logo xl" />
+            </div>
           </>
         ) : (
           <>
