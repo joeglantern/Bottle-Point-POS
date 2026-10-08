@@ -5,6 +5,7 @@ import { branchFor, type AppEnv } from '../middleware/auth.js'
 import { AppError, notFound, unprocessable } from '../lib/errors.js'
 import { body, id, mpesaCode, phone, positiveCents, query } from '../lib/validate.js'
 import { audit } from '../lib/audit.js'
+import { logoUrlOf } from '../lib/branding.js'
 import {
   applyPayment,
   emitSale,
@@ -344,7 +345,9 @@ salesRoutes.get('/:id/receipt', async c => {
       email: biz.email,
       kraPin: biz.kraPin,
       receiptFooter: biz.receiptFooter,
-      vatRateBps: biz.vatRateBps
+      vatRateBps: biz.vatRateBps,
+      // printed at the top, only when the shop uploaded one
+      logoUrl: logoUrlOf(biz.logoUpdatedAt)
     },
     branchName: branch.name,
     saleId: sale.id,

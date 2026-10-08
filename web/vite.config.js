@@ -20,7 +20,15 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/socket\.io/],
         cleanupOutdatedCaches: true,
-        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        // the shop's logo, so it shows on a till without internet
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname === '/api/session/logo',
+            handler: 'CacheFirst',
+            options: { cacheName: 'bp-shop-logo', expiration: { maxEntries: 4 } }
+          }
+        ]
       }
     })
   ],

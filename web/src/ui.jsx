@@ -30,6 +30,23 @@ export function Logo({ className = 'logo' }) {
   )
 }
 
+// The shop's own logo when it uploaded one, otherwise its name in type.
+export function ShopMark({ branding, className = '' }) {
+  if (branding?.logoUrl) return <img src={branding.logoUrl} alt={branding.name} className={'shop-logo ' + className} />
+  if (!branding?.name) return null
+  return <span className={'shop-name ' + className}>{branding.name}</span>
+}
+
+// Bottle Point, small, wherever a shop's brand leads.
+export function PoweredBy({ className = '' }) {
+  return (
+    <span className={'powered-by ' + className}>
+      <span>Powered by</span>
+      <Logo className="logo tiny" />
+    </span>
+  )
+}
+
 const TINTS = { whisky: '#3a2412', vodka: '#2a2a32', gin: '#20302a', wine: '#3a1020', beer: '#3a3010', rum: '#3a2010', cognac: '#3a1c0c', tequila: '#3a3416', brandy: '#33180c' }
 export const tintFor = category => TINTS[String(category || '').toLowerCase()] ?? '#2c2a26'
 

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { api, qs } from './api.js'
 import { atLeast, useApi, useLive, useOnline, useSession, useSyncState } from './session.jsx'
 import { exportUnsent } from './offline/outbox.js'
-import { Icon, Loading, Logo, Modal, ThemeButton, ksh, useTheme, useToast } from './ui.jsx'
+import { Icon, Loading, Modal, PoweredBy, ShopMark, ThemeButton, ksh, useTheme, useToast } from './ui.jsx'
+import { applyBrand } from './brand.js'
 import Login from './pages/Login.jsx'
 import { OpenShift, ShiftModal } from './pages/Shift.jsx'
 import Till from './pages/Till.jsx'
@@ -24,7 +25,9 @@ export default function App() {
 }
 
 function Shell({ themeBtn }) {
-  const { user, branch, branches, branchId, chooseBranch, connected, logout } = useSession()
+  const { user, branch, branches, branchId, chooseBranch, connected, logout, branding } = useSession()
+  // the shop's colour in place of brass, while someone of that shop is signed in
+  useEffect(() => { applyBrand(branding?.accent) }, [branding?.accent])
   const toast = useToast()
   const [view, setView] = useState('till')
   const [shift, setShift] = useState(undefined) // undefined = loading, null = none
@@ -100,7 +103,6 @@ function Shell({ themeBtn }) {
   return (
     <div className="shell side">
       <aside className="rail">
-        <img src="/brand/bottle-point-mark.png" alt="" className="rail-logo" />
         <nav aria-label="Main">
           {tabs.map(([k, l, icon], i) => (
             <button key={k} aria-label={l} aria-current={view === k ? 'page' : undefined} className={(view === k ? 'on' : '') + (hasMore && i >= 4 ? ' nav-extra' : '')} onClick={() => setView(k)}>
@@ -114,10 +116,11 @@ function Shell({ themeBtn }) {
           </button>
         </nav>
         <button aria-label="Sign out" className="rail-out" onClick={logout}><Icon k="out" /><span>Sign out</span></button>
+        <img src="/brand/bottle-point-mark.png" alt="Bottle Point" title="Bottle Point" className="rail-logo" />
       </aside>
       <div className="body">
         <header className="top">
-          <Logo />
+          <ShopMark branding={branding ?? { name: user.businessName }} className="top-mark" />
           <div className="who">
             <span className={'live-dot' + (connected ? ' on' : '')} title={connected ? 'Live' : 'Reconnecting'} role="img" aria-label={connected ? 'Live' : 'Reconnecting'} />
             {shift ? (

@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { applyBrand, contrast, logoFromFile, paletteFrom } from '../brand.js'
 import { api, qs } from '../api.js'
 import { useApi, useSession } from '../session.jsx'
 import { Empty, ErrorNote, Field, Icon, Loading, Modal, ago, dateOf, ksh, kshExact, timeOf, todayNairobi, useAction } from '../ui.jsx'
@@ -30,7 +31,7 @@ export default function Admin({ initial = 'business' }) {
         ))}
       </div>
       <div className="admin-body">
-        {section === 'business' && <><BusinessSection /><StockSetting /><MpesaCodeSetting /></>}
+        {section === 'business' && <><BrandSetting /><BusinessSection /><StockSetting /><MpesaCodeSetting /></>}
         {section === 'mpesa' && <MpesaSection />}
         {section === 'billing' && <BillingSection />}
         {section === 'devices' && <><DevicesSection /><TillsSection /></>}
@@ -430,6 +431,101 @@ function TillsSection() {
           </tbody>
         </table>
       )}
+    </section>
+  )
+}
+
+// The shop's own logo and colour. The logo shows on the till, the sign in
+// screen and receipts only once uploaded; the colour replaces Bottle Point's
+// brass on buttons and highlights, picked from the logo or chosen freely.
+const BRASS = '#c9a45c'
+
+function BrandSetting() {
+  const { branding, refresh } = useSession()
+  const [run, busy] = useAction()
+  const [swatches, setSwatches] = useState([])
+  const [picked, setPicked] = useState(branding?.accent ?? null)
+  const [err, setErr] = useState('')
+  const file = useRef(null)
+  const saved = branding?.accent ?? null
+  const logo = branding?.logoUrl ?? null
+
+  // colours the logo suggests
+  useEffect(() => {
+    let live = true
+    if (!logo) { setSwatches([]); return }
+    paletteFrom(logo).then(s => live && setSwatches(s), () => live && setSwatches([]))
+    return () => { live = false }
+  }, [logo])
+  useEffect(() => { setPicked(saved) }, [saved])
+  // preview while choosing; back to what is saved when leaving
+  useEffect(() => { applyBrand(picked) }, [picked])
+  useEffect(() => () => applyBrand(saved), [saved])
+
+  const upload = async e => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setErr('')
+    let image
+    try { image = await logoFromFile(f) } catch (x) { setErr(x.message); return }
+    run(async () => {
+      await api.put('/admin/business/logo', { image })
+      await refresh()
+    }, 'Logo saved')
+  }
+  const remove = () =>
+    window.confirm('Remove the logo? The till and receipts show the shop name instead.') &&
+    run(async () => { await api.del('/admin/business/logo'); await refresh() }, 'Logo removed')
+  const saveColour = () =>
+    run(async () => { await api.patch('/admin/business', { brandColor: picked }); await refresh() }, picked ? 'Colour saved' : 'Back to Bottle Point brass')
+
+  const options = [...new Set([...swatches, ...(saved && !swatches.includes(saved) ? [saved] : [])])]
+  const weak = picked && contrast(picked, '#ffffff') < 1.6 && contrast(picked, '#09090a') < 3
+
+  return (
+    <section className="card brand-card">
+      <h4>Your brand</h4>
+      <p className="muted small">Your logo shows at the top of the till, on the sign in screen and on receipts. Until you upload one, your shop name shows instead. Bottle Point stays small in a corner.</p>
+      <div className="brand-logos">
+        <div className="brand-tile dark">{logo ? <img src={logo} alt="Your logo on dark" /> : <span>{branding?.name}</span>}</div>
+        <div className="brand-tile light">{logo ? <img src={logo} alt="Your logo on light" /> : <span>{branding?.name}</span>}</div>
+      </div>
+      <div className="admin-actions">
+        <input ref={file} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={upload} />
+        <button type="button" className="outline" disabled={busy} onClick={() => file.current?.click()}>{logo ? 'Replace logo' : 'Upload logo'}</button>
+        {logo && <button type="button" className="ghost danger" disabled={busy} onClick={remove}>Remove</button>}
+      </div>
+      <p className="muted small">PNG, JPEG or WebP. A logo on a transparent background looks best on both light and dark screens.</p>
+      {err && <p className="form-problem">{err}</p>}
+
+      <h4 className="brand-sub">Colour</h4>
+      <p className="muted small">{swatches.length ? 'Colours from your logo. Pick one to see it across the till, then save.' : logo ? 'Your logo has no strong colour. Pick any colour below.' : 'Upload your logo to get colours from it, or pick any colour.'}</p>
+      <div className="swatches" role="radiogroup" aria-label="Till colour">
+        <button type="button" role="radio" aria-checked={!picked} className={'swatch brass' + (!picked ? ' on' : '')} onClick={() => setPicked(null)} title="Bottle Point brass">
+          <span style={{ background: BRASS }} /><small>Brass</small>
+        </button>
+        {options.map(c => (
+          <button type="button" role="radio" aria-checked={picked === c} key={c} className={'swatch' + (picked === c ? ' on' : '')} onClick={() => setPicked(c)} title={c}>
+            <span style={{ background: c }} /><small>{c}</small>
+          </button>
+        ))}
+        <label className="swatch custom" title="Any colour">
+          <input type="color" value={picked ?? BRASS} onChange={e => setPicked(e.target.value.toLowerCase())} aria-label="Pick any colour" />
+          <small>Other</small>
+        </label>
+      </div>
+      <div className="brand-preview" aria-hidden="true">
+        <span className="gold brand-btn">Pay now</span>
+        <span className="badge">3</span>
+        <span className="tag saved">Saved</span>
+        <span className="brand-link">A link</span>
+      </div>
+      {weak && <p className="muted small">This colour is very light or very dark; text on it is adjusted to stay readable.</p>}
+      <div className="admin-actions">
+        <button type="button" className="gold" disabled={busy || picked === saved} onClick={saveColour}>Save colour</button>
+        {picked !== saved && <button type="button" className="ghost" onClick={() => setPicked(saved)}>Undo</button>}
+      </div>
     </section>
   )
 }

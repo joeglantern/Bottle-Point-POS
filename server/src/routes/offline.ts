@@ -4,6 +4,7 @@ import { prisma, type Device } from '../db.js'
 import { AppError, notFound, unprocessable } from '../lib/errors.js'
 import { body, id, query } from '../lib/validate.js'
 import { audit } from '../lib/audit.js'
+import { logoUrlOf } from '../lib/branding.js'
 import { tenantFromHeaders, tenantMode } from '../lib/tenant.js'
 import { assertBranch, requireRole, type AppEnv } from '../middleware/auth.js'
 import { hashToken, MAX_OPS, newDeviceToken, syncOps } from '../rules/offline.js'
@@ -128,7 +129,8 @@ offlineRoutes.get('/bootstrap', async c => {
       email: biz.email,
       kraPin: biz.kraPin,
       receiptFooter: biz.receiptFooter,
-      vatRateBps: biz.vatRateBps
+      vatRateBps: biz.vatRateBps,
+      logoUrl: logoUrlOf(biz.logoUpdatedAt)
     },
     // only those still allowed; the till forgets everyone else
     activeStaff: staff.map(s => s.id)

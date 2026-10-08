@@ -5,7 +5,8 @@ import { prisma } from '../db.js'
 import { AppError, unauthorized } from '../lib/errors.js'
 import { body } from '../lib/validate.js'
 import { audit } from '../lib/audit.js'
-import { requireAuth, type AppEnv } from '../middleware/auth.js'
+import { actorFromHeaders, requireAuth, type AppEnv } from '../middleware/auth.js'
+import { brandingFor } from '../lib/branding.js'
 import { movedTenantFromHeaders, tenantMode, tenantOf } from '../lib/tenant.js'
 import { env } from '../env.js'
 
@@ -82,7 +83,7 @@ sessionRoutes.get('/me', requireAuth, async c => {
     select: { id: true, name: true },
     orderBy: { name: 'asc' }
   })
-  return c.json({ user: actor, branches })
+  return c.json({ user: actor, branches, branding: await brandingFor(actor.businessId) })
 })
 
 // The shop this address belongs to, so the sign in screen can greet it by
@@ -98,5 +99,23 @@ sessionRoutes.get('/tenant', async c => {
     }
     throw new AppError(404, 'no_shop', 'There is no shop at this address.')
   }
-  return c.json({ tenant: { name: tenant.name, slug: tenant.slug }, tenantMode: true })
+  return c.json({ tenant: { name: tenant.name, slug: tenant.slug }, branding: await brandingFor(tenant.id), tenantMode: true })
+})
+
+// The shop's logo. On a shop's address it is that shop's (public, like the
+// shop's name on the sign in screen); without addresses (development) it is
+// the signed in person's shop. The URL carries the upload time, so it can be
+// cached for good.
+sessionRoutes.get('/logo', async c => {
+  const businessId = tenantMode() ? (await tenantOf(c))?.id : (await actorFromHeaders(c.req.raw.headers))?.businessId
+  const b = businessId ? await prisma.business.findUnique({ where: { id: businessId }, select: { logo: true, logoType: true } }) : null
+  if (!b?.logo || !b.logoType) throw new AppError(404, 'no_logo', 'This shop has no logo.')
+  return new Response(new Uint8Array(b.logo), {
+    headers: {
+      'content-type': b.logoType,
+      'cache-control': c.req.query('v') ? 'public, max-age=31536000, immutable' : 'no-cache',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'"
+    }
+  })
 })

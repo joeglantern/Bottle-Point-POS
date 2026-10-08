@@ -99,6 +99,13 @@ model Business {
   // checks every one against the statement.
   requireMpesaCode Boolean @default(true)
 
+  // the shop's own brand: a logo (shown on the till, the sign in screen and
+  // receipts only once uploaded) and the colour the till uses instead of brass
+  logo          Bytes?
+  logoType      String?
+  logoUpdatedAt DateTime?
+  brandColor    String?
+
   branches     Branch[]
   users        User[]
   products     Product[]

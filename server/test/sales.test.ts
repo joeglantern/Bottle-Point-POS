@@ -556,7 +556,8 @@ describe('receipt', () => {
       email: null,
       kraPin: null,
       receiptFooter: null,
-      vatRateBps: 1600
+      vatRateBps: 1600,
+      logoUrl: null
     })
     expect(rc.vatCents).toBe(73931)
   })

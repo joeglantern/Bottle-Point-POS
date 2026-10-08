@@ -2,7 +2,9 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { prisma } from '../../db.js'
 import { audit } from '../../lib/audit.js'
-import { notFound } from '../../lib/errors.js'
+import { badRequest, notFound } from '../../lib/errors.js'
+import { brandingFor } from '../../lib/branding.js'
+import { forgetTenant } from '../../lib/tenant.js'
 import { body } from '../../lib/validate.js'
 import { requireRole, type AppEnv } from '../../middleware/auth.js'
 
@@ -21,7 +23,8 @@ const businessSelect = {
   receiptFooter: true,
   vatRateBps: true,
   trackStock: true,
-  requireMpesaCode: true
+  requireMpesaCode: true,
+  brandColor: true
 } as const
 
 // Optional text: trimmed, and an empty string (or null) clears the field.
@@ -61,13 +64,58 @@ const patchSchema = z
     // 0 for a shop that is not registered for VAT
     vatRateBps: z.number().int('VAT rate must be a whole number of basis points').min(0).max(5000, 'VAT rate is at most 5000 (50%)'),
     trackStock: z.boolean(),
-    requireMpesaCode: z.boolean()
+    requireMpesaCode: z.boolean(),
+    // the till's accent colour, picked from the logo; null goes back to brass
+    brandColor: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Colour must look like #1f6feb').transform(s => s.toLowerCase()).nullable()
   })
   .partial()
   .refine(v => Object.values(v).some(x => x !== undefined), 'Nothing to change')
 
 type Field = Exclude<keyof typeof businessSelect, 'id'>
 const FIELDS = Object.keys(businessSelect).filter(k => k !== 'id') as Field[]
+
+// ---------- logo ----------
+
+const MAX_LOGO_BYTES = 70_000
+const logoBody = z.object({ image: z.string().max(100_000) })
+
+// PNG, JPEG or WebP only, recognised by their first bytes. No SVG: it can
+// carry script.
+function imageType(b: Buffer) {
+  if (b.length > 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png'
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
+  if (b.length > 12 && b.subarray(0, 4).toString('ascii') === 'RIFF' && b.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp'
+  return null
+}
+
+// The till shrinks the image before sending it (at most 512 pixels a side).
+businessRoutes.put('/business/logo', requireRole('OWNER'), async c => {
+  const actor = c.get('actor')
+  const { image } = await body(c, logoBody)
+  const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(image)
+  if (!m) throw badRequest('Upload a PNG, JPEG or WebP image.')
+  const bytes = Buffer.from(m[2]!, 'base64')
+  const type = imageType(bytes)
+  if (!type) throw badRequest('That file is not a PNG, JPEG or WebP image.')
+  if (bytes.length > MAX_LOGO_BYTES) throw badRequest('The logo is too large. Use a smaller image.')
+  const at = new Date()
+  await prisma.$transaction(async tx => {
+    await tx.business.update({ where: { id: actor.businessId }, data: { logo: bytes, logoType: type, logoUpdatedAt: at } })
+    await audit(tx, actor, 'business.logo_uploaded', 'business', actor.businessId, { bytes: bytes.length, type })
+  })
+  forgetTenant()
+  return c.json({ branding: await brandingFor(actor.businessId) })
+})
+
+businessRoutes.delete('/business/logo', requireRole('OWNER'), async c => {
+  const actor = c.get('actor')
+  await prisma.$transaction(async tx => {
+    await tx.business.update({ where: { id: actor.businessId }, data: { logo: null, logoType: null, logoUpdatedAt: null } })
+    await audit(tx, actor, 'business.logo_removed', 'business', actor.businessId)
+  })
+  forgetTenant()
+  return c.json({ branding: await brandingFor(actor.businessId) })
+})
 
 businessRoutes.get('/business', requireRole('MANAGER'), async c => {
   const actor = c.get('actor')

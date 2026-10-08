@@ -42,7 +42,7 @@ export function SessionProvider({ children }) {
     setBranch(branchId)
     setUser(me.user)
     kvSet('me:current', me).catch(() => {})
-    setState({ loading: false, user: me.user, branches: me.branches, branchId, offline, notice: null })
+    setState({ loading: false, user: me.user, branches: me.branches, branding: me.branding ?? null, branchId, offline, notice: null })
     if (!offline) {
       refreshMe(me).catch(() => {})
       prepareOffline(me.branches.find(b => b.id === branchId)?.name)

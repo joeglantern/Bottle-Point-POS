@@ -62,7 +62,7 @@ export function ReceiptPaper({ r }) {
   return (
     <article className={'rc' + (refund ? ' is-refund' : '')}>
       <header className="rc-head">
-        <img src="/brand/bottle-point-lockup-light.png" alt={r.business.name} className="rc-logo" />
+        {r.business.logoUrl && <img src={r.business.logoUrl} alt={r.business.name} className="rc-logo" />}
         <div className="rc-biz">
           <b>{r.business.name}</b>
           <span>{r.branch.name} branch</span>
@@ -134,6 +134,7 @@ export function ReceiptPaper({ r }) {
         <p className="rc-thanks">{refund ? 'Refund processed. Keep this slip.' : 'Thank you, karibu tena.'}</p>
         {r.business.receiptFooter && <p className="rc-custom">{r.business.receiptFooter}</p>}
         <p className="rc-law">Not for sale to persons under the age of 18. Drink responsibly.</p>
+        <p className="rc-by">Bottle Point POS</p>
         {!refund && <p className="rc-law">Goods once sold are not returnable without this receipt.</p>}
       </footer>
     </article>
@@ -223,7 +224,8 @@ export function fromApiReceipt(r, copy = false) {
       phone: r.business?.phone ?? null,
       kraPin: r.business?.kraPin ?? null,
       receiptFooter: r.business?.receiptFooter ?? null,
-      vatRateBps: r.business?.vatRateBps ?? null
+      vatRateBps: r.business?.vatRateBps ?? null,
+      logoUrl: r.business?.logoUrl ?? null
     },
     vatCents: r.vatCents ?? null,
     branch: { name: r.branchName },

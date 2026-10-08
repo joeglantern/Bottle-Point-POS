@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { useOnline, useSession } from '../session.jsx'
-import { Logo } from '../ui.jsx'
+import { Logo, PoweredBy } from '../ui.jsx'
+import { applyBrand } from '../brand.js'
 
 // The username is remembered on this device so a till only needs the PIN.
 const KEY = 'bp-last-user'
@@ -22,7 +23,7 @@ export default function Login({ themeBtn }) {
   // Which shop this address belongs to (nyrolix.pos.flarehub.co.ke -> Nyrolix).
   useEffect(() => {
     api.get('/session/tenant').then(
-      r => setShop({ loading: false, name: r.tenant?.name ?? null, missing: false }),
+      r => setShop({ loading: false, name: r.tenant?.name ?? null, branding: r.branding ?? null, missing: false }),
       e => {
         // the shop changed its address: go there, keeping the path
         if (e.code === 'shop_moved' && e.details?.url) {
@@ -38,6 +39,9 @@ export default function Login({ themeBtn }) {
   useEffect(() => {
     if (shop.name) document.title = `${shop.name} · Bottle Point`
   }, [shop.name])
+  // the shop's own colour from the first screen
+  useEffect(() => { applyBrand(shop.branding?.accent) }, [shop.branding?.accent])
+  const brand = shop.branding
 
   const submit = async value => {
     const name = username.trim().toLowerCase()
@@ -109,9 +113,20 @@ export default function Login({ themeBtn }) {
   return (
     <div className="login">
       {themeBtn}
-      <div className="login-art">
-        <h1 className="login-brand"><Logo className="logo xl" /></h1>
-        <p className="login-sub">{shop.name ? shop.name : 'Point of sale for wines, spirits and local pubs.'}</p>
+      <div className={'login-art' + (brand ? ' shop' : '')}>
+        {brand ? (
+          <>
+            {brand.logoUrl && <img src={brand.logoUrl} alt="" className="login-shop-logo" />}
+            <h1 className="login-shop-name">{brand.name}</h1>
+            <p className="login-sub">Staff sign in</p>
+            <PoweredBy className="login-powered" />
+          </>
+        ) : (
+          <>
+            <h1 className="login-brand"><Logo className="logo xl" /></h1>
+            <p className="login-sub">{shop.name ? shop.name : 'Point of sale for wines, spirits and local pubs.'}</p>
+          </>
+        )}
       </div>
       <div className="login-card">
         <h2>Sign in</h2>
