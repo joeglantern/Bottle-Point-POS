@@ -74,6 +74,18 @@ export function SessionProvider({ children }) {
 
   useEffect(() => { refresh() }, [refresh])
   useEffect(() => { startSync() }, [])
+  // a branch went away while in use: reload who I am, which lands on a branch
+  // that still exists (the till's tabs and sales moved with the branch)
+  useEffect(() => {
+    let busy = false
+    const on = async () => {
+      if (busy) return
+      busy = true
+      try { await refresh() } finally { setTimeout(() => { busy = false }, 3000) }
+    }
+    window.addEventListener('bp:branches-changed', on)
+    return () => window.removeEventListener('bp:branches-changed', on)
+  }, [refresh])
 
   // The internet is back after an offline sign in: the server needs a real
   // session. Offline sales sync on their own (the till's key), so nothing waits.

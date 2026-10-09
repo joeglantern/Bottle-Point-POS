@@ -63,6 +63,8 @@ async function request(method, path, body) {
   if (!res.ok) {
     const e = data && data.error
     if (res.status === 401) window.dispatchEvent(new Event('bp:signed-out'))
+    // the branch this till was using was closed or merged: pick up the current list
+    if (res.status === 403 && e && /branch/i.test(e.message)) window.dispatchEvent(new Event('bp:branches-changed'))
     // suspended or cancelled subscription: the app shows why, everywhere at once
     if (res.status === 402 && e && /^subscription_/.test(e.code)) window.dispatchEvent(new CustomEvent('bp:subscription', { detail: { code: e.code, message: e.message } }))
     // "Invalid input." alone does not help anyone: show what was wrong

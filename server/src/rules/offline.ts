@@ -409,6 +409,14 @@ export async function syncOne(device: Device, raw: unknown): Promise<OpResult> {
     return { opId, status: 'rejected', message: 'This item is not in a form the server understands: ' + parsed.error.issues.map(i => `${i.path.join('.')} ${i.message}`).slice(0, 3).join('; ') }
   }
   const op = parsed.data
+  // a branch merged into another since the till recorded this: use the one it became
+  if ('branchId' in op && op.branchId) {
+    const live = await prisma.branch.findUnique({ where: { id: op.branchId }, select: { id: true } })
+    if (!live) {
+      const into = await prisma.branch.findFirst({ where: { businessId: device.businessId, formerIds: { has: op.branchId } }, select: { id: true } })
+      if (into) op.branchId = into.id
+    }
+  }
   const earlier = async () => {
     const done = await prisma.offlineOp.findUnique({ where: { opId: op.opId } })
     if (!done) return null

@@ -320,6 +320,8 @@ model Branch {
   // next human readable sale number for this branch, incremented atomically
   nextSaleNo Int      @default(1001)
   active     Boolean  @default(true)
+  // branches merged into this one; offline sales still addressed to them land here
+  formerIds  String[] @default([])
   createdAt  DateTime @default(now())
 
   business     Business       @relation(fields: [businessId], references: [id])

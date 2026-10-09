@@ -222,6 +222,19 @@ describe('syncing offline sales', () => {
   })
 })
 
+describe('a branch merged while a till was offline', () => {
+  it('sends its offline sales to the branch it became', async () => {
+    const t = await register()
+    const gone = await prisma.branch.create({ data: { businessId: fx.business.id, name: 'Old till branch' } })
+    await prisma.branch.update({ where: { id: fx.branches.west.id }, data: { formerIds: [gone.id] } })
+    await prisma.branch.delete({ where: { id: gone.id } })
+    const op = { ...saleOp(t.code), branchId: gone.id }
+    const r = await sync(t.token, [op])
+    expect(r.results[0].status).toBe('ok')
+    expect((await prisma.sale.findUniqueOrThrow({ where: { id: r.results[0].sale.id } })).branchId).toBe(fx.branches.west.id)
+  })
+})
+
 describe('stock and codes offline', () => {
   it('records a sale that took stock below zero, and asks for a count', async () => {
     const t = await register()
